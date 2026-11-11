@@ -11,6 +11,9 @@
 header, footer { background: var(--brand-navy); color: #edfcfc; }
 header a, footer a, header .brand, footer .brand, header nav a,
 header .menu, .footer-bottom { color: #edfcfc; }
+.brand img.brand-logo { display: block; width: 145px; height: auto; max-width: 100%; }
+.site-version { color: #a3f0f0; font-variant-numeric: tabular-nums; }
+@media(max-width:480px) { .brand img.brand-logo { width: 112px; } }
 header nav a.active { color: var(--brand-teal); border-color: var(--brand-teal); }
 .hero .button.light { background: var(--brand-teal); color: var(--brand-deep); border-color: var(--brand-teal); }
 .hero > img { filter: brightness(.76); }

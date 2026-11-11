@@ -49,7 +49,7 @@ for (const [language, slug] of Object.entries(slugs)) {
       .replace(/(<meta name="description" content=")[^"]*/,(_,tag)=>tag+String(node('meta[name=description]').content).replaceAll('&','&amp;').replaceAll('"','&quot;'))
       .replace('<nav id="nav" aria-label="Main navigation"></nav>', '<nav id="nav" aria-label="Main navigation">'+node('nav').innerHTML+'</nav>')
       .replace('<main id="main" tabindex="-1"></main>','<main id="main" tabindex="-1">'+node('main').innerHTML+'</main>')
-      .replace('<footer id="footer"></footer>','<footer id="footer">'+node('footer').innerHTML+'</footer>')
+      .replace('<footer id="footer"></footer>','<footer id="footer">'+node('footer').innerHTML.replace('{{VERSION}}',version)+'</footer>')
       .replace('</head>',Object.entries(slugs).map(([key, value])=>{
         const href=value+(route==='home'?'':'/'+route)+'/';
         return '<link rel="alternate" hreflang="'+({zh:'zh-TW'}[key]||key)+'" href="'+(origin?origin+'/':'')+href+'index.html">';
