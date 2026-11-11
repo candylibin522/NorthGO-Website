@@ -4,9 +4,9 @@
 
 ## 新版網站
 
-目前版本為 1.0.1，版本號記錄在 `VERSION`，建置時會顯示在各頁頁尾。
+目前版本為 1.1.0，版本號記錄在 `VERSION`，建置時會顯示在各頁頁尾。
 
-- `node build-northgo.mjs` 產生四語系共 56 個 HTML 頁面。編輯 `site-assets/content.js` 與 `site-assets/offices.js` 後重新產生。
+- `node build-northgo.mjs` 產生四語系共 60 個 HTML 頁面。編輯 `site-assets/content.js` 與 `site-assets/offices.js` 後重新產生。
 - `node serve-northgo.mjs` 啟動本機網站，預設網址為 `http://127.0.0.1:4180`。可設定 `PORT`。
 - 透過伺服器送出的詢問會儲存在 `.northgo-inbox`。每筆包含收件編號、服務、辦公室、語系與收件時間。該資料夾不在網頁根目錄下。
 - 設定經核准的 HTTPS 收件網址 `NORTHGO_ENQUIRY_WEBHOOK`（必要時另設 `NORTHGO_ENQUIRY_TOKEN`），再執行 `node dispatch-northgo.mjs` 投遞待處理詢問。每次執行會重試未成功的紀錄。接收端應以 `Idempotency-Key` 去除重複資料，並依 service 與 recipient 欄位分派。執行時請排程為單一執行個體。
@@ -26,7 +26,7 @@
 
 ## 正式上線前
 
-GitHub Pages 的發布來源使用 GitHub Actions。推送到 `main` 或 `master` 會觸發 Pages 工作流程。Pages 版使用電話與電子郵件聯絡，本機 Node 版提供詢問收件。
+GitHub Pages 的發布來源使用 GitHub Actions。推送到 `main` 或 `master` 會觸發 Pages 工作流程。Pages 版的詢問表單產生電子郵件草稿，本機 Node 版提供直接收件。
 
 正式發布需完成企業收件端設定、法務及翻譯審校、效能與無障礙稽核，以及正式網域的轉址驗收。正式法律頁目前顯示審核狀態和聯絡方式。
 

@@ -1,6 +1,7 @@
 function initBuiltContact() {
   const form = document.getElementById('enquiry');
-  if (document.body.dataset.staticHosting === 'true') {
+  const staticHosting = document.body.dataset.staticHosting === 'true';
+  if (staticHosting && document.body.dataset.route !== 'inquiry') {
     form.hidden = true;
     const note = document.createElement('p');
     note.textContent = {
@@ -21,8 +22,13 @@ function initBuiltContact() {
     vi:['Gửi yêu cầu','Thông tin được lưu trong hệ thống tiếp nhận của trang.','Đã tiếp nhận. Mã','Không thể tiếp nhận. Vui lòng thử lại.','Mở trang qua máy chủ để gửi yêu cầu.']
   }[lang];
   const submit = form.querySelector('button[type=submit]');
-  submit.textContent = labels[0];
-  form.querySelector('.hint').textContent = labels[1];
+  submit.textContent = staticHosting ? t.send : labels[0];
+  form.querySelector('.hint').textContent = staticHosting ? {
+    zh:'先建立草稿，再開啟郵件程式確認寄出。',
+    en:'Prepare a draft, then open your email app to review and send it.',
+    ja:'下書きを作成してから、メールアプリで内容を確認し送信してください。',
+    vi:'Tạo bản nháp, sau đó mở ứng dụng email để kiểm tra và gửi.'
+  }[lang] : labels[1];
   form.querySelector('.consent span').textContent = {
     zh:'我同意將上述資料用於處理本次詢問。',
     en:'I agree that these details may be used to handle this enquiry.',
@@ -58,6 +64,26 @@ function initBuiltContact() {
   form.addEventListener('input',()=>{ reference=undefined; });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
+    if(staticHosting){
+      const data=new FormData(form);
+      const recipient=officeData[Number(data.get('recipient'))];
+      const service=t.serviceNames[Number(data.get('service'))];
+      const fields=['name','company','email','service','origin','destination','requirements'];
+      const body=fields.map((key,index)=>t.fields[index]+': '+(key==='service'?service:data.get(key)))
+        .concat(['dimensions','schedule'].map((key,index)=>extraLabels[index]+': '+data.get(key))).join('\n');
+      const draft='mailto:'+recipient.email+'?subject='+encodeURIComponent('Northgo / '+service)+'&body='+encodeURIComponent(body);
+      document.getElementById('mailOutput').hidden=false;
+      document.getElementById('mailStatus').textContent=t.mailReady+' '+recipient.email;
+      const text=document.getElementById('mailText');
+      text.value=body;
+      document.getElementById('emailLink').href=draft;
+      document.getElementById('copyMail').onclick=async event=>{
+        try{await navigator.clipboard.writeText(body);event.target.textContent=t.copied;}
+        catch{text.focus();text.select();}
+      };
+      document.getElementById('emailLink').focus();
+      return;
+    }
     if(location.protocol==='file:'){ status.textContent=labels[4]; return; }
     reference ||= Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
     submit.disabled=true;

@@ -35,7 +35,7 @@ for (const [language, slug] of Object.entries(slugs)) {
     const source = await readFile(new URL(file, root),'utf8');
     runInContext(file.endsWith('/site.js') ? source.split('const builtPage=')[0] : source,context);
   }
-  const pages = ['home','services','freight','project','warehouse','shipping','about','offices','contact','sitemap',...legalPaths];
+  const pages = ['home','services','freight','project','warehouse','shipping','about','offices','contact','inquiry','sitemap',...legalPaths];
   for (const route of pages) {
     const relative = route==='home' ? slug+'/' : slug+'/'+route+'/';
     const base = route==='home' ? '../' : '../../';
