@@ -4,7 +4,7 @@
 
 ## 新版網站
 
-目前版本為 1.1.0，版本號記錄在 `VERSION`，建置時會顯示在各頁頁尾。
+目前版本為 1.1.1，版本號記錄在 `VERSION`，建置時會顯示在各頁頁尾。
 
 - `node build-northgo.mjs` 產生四語系共 60 個 HTML 頁面。編輯 `site-assets/content.js` 與 `site-assets/offices.js` 後重新產生。
 - `node serve-northgo.mjs` 啟動本機網站，預設網址為 `http://127.0.0.1:4180`。可設定 `PORT`。
