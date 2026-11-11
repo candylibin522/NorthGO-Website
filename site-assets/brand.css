@@ -1,0 +1,32 @@
+:root {
+  --ink: #13264b;
+  --green: #08636e;
+  --muted: #49617a;
+  --line: #cad9e6;
+  --light: #edf6fa;
+  --brand-navy: #13264b;
+  --brand-deep: #0a1b33;
+  --brand-teal: #00e5e5;
+}
+header, footer { background: var(--brand-navy); color: #edfcfc; }
+header a, footer a, header .brand, footer .brand, header nav a,
+header .menu, .footer-bottom { color: #edfcfc; }
+header nav a.active { color: var(--brand-teal); border-color: var(--brand-teal); }
+.hero .button.light { background: var(--brand-teal); color: var(--brand-deep); border-color: var(--brand-teal); }
+.hero > img { filter: brightness(.76); }
+.hero { height: 490px; }
+.hero-copy { padding-top: 82px; }
+.service-item img { border-radius: 4px; }
+.service-item .number, .step > span, .eyebrow { display: none; }
+#officeMap { background: var(--brand-deep); }
+.map-pin, .map-pin.hq { background: var(--brand-teal); color: var(--brand-deep); border-color: var(--brand-deep); }
+.map-pin.hq { background: #a3f0f0; }
+.city-tooltip { background: var(--brand-navy); color: #edfcfc; border-color: #526c8c; }
+.office-entry.selected { background: #e0f9fa; border-color: #00868c; }
+#enquiryStatus { overflow-wrap: anywhere; }
+@media(max-width:800px) {
+  .hero { min-height: 420px; height: 470px; }
+  .hero-copy { padding-top: 110px; }
+  .office-list { grid-template-columns: 1fr; }
+}
+@media(max-width:480px) { .hero-copy { padding-top: 92px; } }
