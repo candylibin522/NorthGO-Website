@@ -1,4 +1,6 @@
 const $ = selector => document.querySelector(selector);
+const usersPage = /^\/admin\/users\/?$/.test(location.pathname);
+if (!usersPage && location.hash === '#users') location.replace('/admin/users/');
 const states = { new: '待處理', processing: '處理中', replied: '已回覆', archived: '已封存' };
 const services = ['貨運物流', '專案物流', '倉儲物流', '船務代理'];
 const offices = ['台北', '台中', '高雄', '洛杉磯', '胡志明市', '東京', '大阪'];
@@ -101,7 +103,7 @@ async function start() {
     $('#authTitle').textContent = setup ? '建立管理帳號' : '管理者登入';
     $('#authDescription').textContent = setup
       ? (session.setupAllowed ? '設定第一位管理者的帳號與密碼。密碼至少 12 字元。' : '請在本機伺服器完成初始帳號設定。')
-      : '登入以查看及處理客戶詢問。';
+      : usersPage ? '請使用擁有者帳號登入使用者管理。' : '登入以查看及處理客戶詢問。';
     $('#confirmLabel').hidden = !setup;
     const form = $('#authForm');
     form.elements.confirm.required = setup;
@@ -128,20 +130,26 @@ async function signedIn(session) {
   $('#username').textContent = session.username;
   $('#authForm').reset();
   $('#authView').hidden = true;
-  $('#appView').hidden = false;
   $('#accountActions').hidden = false;
   $('#detail').replaceChildren(element('p', '請選擇一筆詢問。', 'empty'));
   message('#listMessage', '');
-  await loadList();
-  await renderAdminPage();
+  if (usersPage) await renderAdminPage();
+  else {
+    $('#appView').hidden = false;
+    await loadList();
+  }
 }
 
 async function renderAdminPage() {
-  if (!authenticated) return;
-  const users = location.hash === '#users' && role === 'owner';
-  $('#appView').hidden = users;
-  $('#usersView').hidden = !users;
-  if (!users) return;
+  if (!authenticated || !usersPage) return;
+  $('#usersView').hidden = false;
+  const permitted = role === 'owner';
+  $('#addUser').hidden = !permitted;
+  $('#usersTable').hidden = true;
+  if (!permitted) {
+    message('#usersMessage', '目前帳號為「' + (roles[role]?.[0] || '一般使用者') + '」。只有擁有者可管理使用者，請登出並使用擁有者帳號登入。');
+    return;
+  }
   const sequence = ++usersSequence;
   message('#usersMessage', '');
   try {
@@ -164,6 +172,7 @@ async function renderAdminPage() {
         element('td', user.enabled ? '啟用' : '停用'), action);
       rows.append(row);
     }
+    $('#usersTable').hidden = false;
   } catch (error) { message('#usersMessage', error.message); }
 }
 
@@ -184,7 +193,6 @@ function openUserForm(user) {
   $('#userDialog').showModal();
 }
 
-window.addEventListener('hashchange', renderAdminPage);
 $('#userDialog').addEventListener('close', () => { $('#userForm').elements.password.value = ''; });
 $('#addUser').addEventListener('click', () => openUserForm());
 $('#cancelUser').addEventListener('click', () => $('#userDialog').close());
@@ -567,7 +575,11 @@ for (const [field, values] of [['service', services], ['recipient', offices]]) {
     $('#filters').elements[field].append(option);
   });
 }
+if (usersPage) {
+  document.title = 'Northgo 使用者管理';
+  $('#adminSection').textContent = '使用者管理';
+}
 start();
 setInterval(() => {
-  if (authenticated && !document.hidden && !saving && !detailLoading) loadList();
+  if (!usersPage && authenticated && !document.hidden && !saving && !detailLoading) loadList();
 }, 15000);

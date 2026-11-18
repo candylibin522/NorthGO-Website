@@ -75,6 +75,7 @@ const server=createServer(async(request,response)=>{
     if(!['GET','HEAD'].includes(request.method))return json(response,405,{error:'Method not allowed'});
     const adminFiles={
       '/admin':'index.html','/admin/':'index.html','/admin/index.html':'index.html',
+      '/admin/users':'index.html','/admin/users/':'index.html',
       '/admin/admin.css':'admin.css','/admin/admin.js':'admin.js'
     };
     if(Object.hasOwn(adminFiles,url.pathname)){

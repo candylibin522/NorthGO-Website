@@ -307,7 +307,8 @@ async function route(request, env, context) {
   if (!['GET', 'HEAD'].includes(request.method)) return json({ error: 'Method not allowed' }, 405);
   if (url.pathname === '/admin') return Response.redirect(url.origin + '/admin/', 302);
   const assetUrl = new URL(url);
-  if (assetUrl.pathname.endsWith('/')) assetUrl.pathname += 'index.html';
+  if (/^\/admin\/users\/?$/.test(assetUrl.pathname)) assetUrl.pathname = '/admin/index.html';
+  else if (assetUrl.pathname.endsWith('/')) assetUrl.pathname += 'index.html';
   const asset = await env.ASSETS.fetch(new Request(assetUrl, request));
   if (!url.pathname.startsWith('/admin/')) return asset;
   const response = new Response(asset.body, asset);

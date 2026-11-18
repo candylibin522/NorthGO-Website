@@ -12,9 +12,9 @@
 <body>
   <header class="topbar">
     <a href="/zh-tw/index.html" aria-label="Northgo 首頁"><img src="/site-assets/northgo-logo.svg" alt="Northgo" width="160" height="32"></a>
-    <span>詢問管理</span>
+    <span id="adminSection">詢問管理</span>
     <div id="accountActions" class="account-actions" hidden>
-      <a href="#users" id="usersLink" hidden>使用者管理</a>
+      <a href="/admin/users/" id="usersLink" hidden>使用者管理</a>
       <span class="account-identity"><span id="username"></span><span id="accountRole"></span></span>
       <button id="changePassword" type="button">變更密碼</button>
       <button id="logout" type="button">登出</button>
@@ -60,11 +60,11 @@
     </section>
     <section id="usersView" hidden aria-label="使用者管理">
       <div class="page-heading">
-        <div><h1>使用者管理</h1><a href="#inquiries">返回客戶詢問</a></div>
+        <div><h1>使用者管理</h1><a href="/admin/">返回客戶詢問</a></div>
         <button id="addUser" type="button" class="primary">新增使用者</button>
       </div>
       <p id="usersMessage" class="message" role="status"></p>
-      <div class="inbox table-scroll">
+      <div id="usersTable" class="inbox table-scroll" hidden>
         <table>
           <thead><tr><th scope="col">帳號</th><th scope="col">角色</th><th scope="col">詢問權限</th><th scope="col">狀態</th><th scope="col">操作</th></tr></thead>
           <tbody id="userRows"></tbody>
