@@ -54,11 +54,11 @@ header nav a.active { color: var(--brand-teal); border-color: var(--brand-teal);
 .page-hero::before { content: ''; position: absolute; inset: 0; z-index: -1; background: #0a1b3380; }
 .page-hero .wrap { width: 100%; }
 .page-hero h1, .page-hero p, .page-hero .crumb { color: #edfcfc; text-shadow: 0 1px 6px #0a1b33; }
-.hero { display: grid; align-items: center; height: auto; min-height: 370px; max-height: none; }
-.hero-copy { width: 100%; padding: 38px 32px; }
-.hero h1 { font-size: 42px; margin-bottom: 20px; max-width: 600px; line-height: 1.35; }
+.hero { display: grid; align-items: center; height: auto; min-height: 270px; max-height: none; }
+.hero-copy { width: 100%; padding: 24px 32px; }
+.hero h1 { font-size: 36px; margin-bottom: 12px; max-width: 600px; line-height: 1.35; }
 .hero p { max-width: 520px; font-size: 16px; line-height: 1.75; }
-.hero .actions { margin-top: 22px; }
+.hero .actions { margin-top: 16px; }
 .service-item img { border-radius: 4px; }
 .service-item .number, .step > span, .eyebrow { display: none; }
 #officeMap { background: var(--brand-deep); }
@@ -70,9 +70,9 @@ header nav a.active { color: var(--brand-teal); border-color: var(--brand-teal);
 @media(max-width:800px) {
   :root { --hero-gutter: 32px; }
   .hero, .page-top { margin-top: 16px; }
-  .hero { min-height: 340px; }
-  .hero-copy { padding: 30px 22px; }
-  .hero h1 { font-size: 34px; }
+  .hero { min-height: 260px; }
+  .hero-copy { padding: 22px; }
+  .hero h1 { font-size: 30px; }
   .hero p { font-size: 15px; }
   .page-hero { min-height: 220px; }
   .office-list { grid-template-columns: 1fr; }
