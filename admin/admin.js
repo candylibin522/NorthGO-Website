@@ -149,17 +149,17 @@ function renderList() {
   for (const entry of filtered.slice((page - 1) * pageSize, page * pageSize)) {
     const row = element('tr');
     if (current?.record.reference === entry.reference) row.className = 'selected-row';
-    const customer = element('td');
-    const open = element('button', entry.name || '未填姓名');
+    const company = element('td', entry.company || '—');
+    const contact = element('td');
+    const open = element('button', entry.name || '未填聯絡人');
     open.type = 'button';
     open.addEventListener('click', () => loadDetail(entry.reference));
-    customer.append(open, element('span', entry.company || '—', 'muted'), element('span', entry.email || '', 'muted'));
-    const service = element('td', services[entry.service] || '—');
-    service.append(element('span', offices[entry.recipient] || '—', 'muted'));
+    contact.append(open);
     const state = element('td');
     state.append(element('span', states[entry.state], 'state state-' + entry.state));
     if (entry.assignee) state.append(element('span', entry.assignee, 'muted'));
-    row.append(customer, service, state, element('td', date(entry.receivedAt)));
+    row.append(company, contact, element('td', services[entry.service] || '—'),
+      element('td', offices[entry.recipient] || '—'), state, element('td', date(entry.receivedAt)));
     rows.append(row);
   }
   $('#empty').hidden = filtered.length > 0;

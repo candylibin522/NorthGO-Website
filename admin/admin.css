@@ -37,11 +37,12 @@ textarea{resize:vertical;min-height:100px}
 .workspace{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(350px,1fr);gap:24px;align-items:start;margin-top:16px}
 .inbox{min-width:0;background:white;border:1px solid var(--line);border-radius:4px}
 .table-scroll{overflow:auto}
-table{border-collapse:collapse;width:100%;font-size:13px}
+table{border-collapse:collapse;width:100%;min-width:565px;font-size:13px}
 th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-weight:600;background:#f8fafc;white-space:nowrap}
 td{overflow-wrap:anywhere}
-td:first-child{min-width:130px}
+td:first-child{min-width:100px}
+td:last-child{white-space:nowrap}
 td button{padding:0;border:0;background:none;text-align:left;color:#086b7b;font-weight:600}
 td button:hover{text-decoration:underline}
 .selected-row{background:#eaf6f8}
