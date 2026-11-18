@@ -1,3 +1,24 @@
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/InterVariable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Source Han Sans TC';
+  src: url('fonts/SourceHanSansTC-Normal.otf') format('opentype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+body, body * {
+  font-family: 'Inter', 'Source Han Sans TC', sans-serif;
+  font-synthesis: none;
+}
+.leaflet-container, .leaflet-tooltip, .leaflet-popup-content, .city-tooltip {
+  font-family: 'Inter', 'Source Han Sans TC', sans-serif !important;
+}
 :root {
   --ink: #13264b;
   --green: #08636e;
@@ -35,8 +56,7 @@ header nav a.active { color: var(--brand-teal); border-color: var(--brand-teal);
 .page-hero h1, .page-hero p, .page-hero .crumb { color: #edfcfc; text-shadow: 0 1px 6px #0a1b33; }
 .hero { display: grid; align-items: center; height: auto; min-height: 370px; max-height: none; }
 .hero-copy { width: 100%; padding: 38px 32px; }
-.hero h1 { font-size: 64px; margin-bottom: 14px; }
-.hero h2 { font-size: 28px; max-width: 560px; }
+.hero h1 { font-size: 42px; margin-bottom: 20px; max-width: 600px; line-height: 1.35; }
 .hero p { max-width: 520px; font-size: 16px; line-height: 1.75; }
 .hero .actions { margin-top: 22px; }
 .service-item img { border-radius: 4px; }
@@ -52,15 +72,13 @@ header nav a.active { color: var(--brand-teal); border-color: var(--brand-teal);
   .hero, .page-top { margin-top: 16px; }
   .hero { min-height: 340px; }
   .hero-copy { padding: 30px 22px; }
-  .hero h1 { font-size: 48px; }
-  .hero h2 { font-size: 25px; }
+  .hero h1 { font-size: 34px; }
   .hero p { font-size: 15px; }
   .page-hero { min-height: 220px; }
   .office-list { grid-template-columns: 1fr; }
 }
 @media(max-width:480px) {
-  .hero h1 { font-size: 42px; }
-  .hero h2 { font-size: 23px; }
+  .hero h1 { font-size: 28px; }
   .hero .actions { align-items: stretch; }
   .hero .actions .button { flex: 1 1 170px; }
 }
