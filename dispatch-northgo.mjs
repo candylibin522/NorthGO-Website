@@ -20,7 +20,7 @@ for(const name of files.filter(name=>/^[a-f0-9]{32}\.json$/.test(name))){
   const record=JSON.parse(await readFile(file,'utf8'));
   if(record.status==='delivered')continue;
   const management=managementFor(adminStore,record.reference);
-  if(management.state==='archived')continue;
+  if(management.state==='archived'||management.deletedAt)continue;
   const headers={'Content-Type':'application/json','Idempotency-Key':record.reference};
   if(token)headers.Authorization='Bearer '+token;
   const {attempts=[],status,...enquiry}=record;

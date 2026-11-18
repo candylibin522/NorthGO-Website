@@ -33,6 +33,7 @@ textarea{resize:vertical;min-height:100px}
 .counts strong{font-size:20px;color:var(--ink);margin-left:8px;font-weight:600}
 .filters{display:grid;grid-template-columns:minmax(180px,2fr) repeat(3,minmax(130px,1fr));gap:16px;padding-top:20px}
 .filters label{margin:0}
+.page-heading .actions{margin:0}
 .workspace{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(350px,1fr);gap:24px;align-items:start;margin-top:16px}
 .inbox{min-width:0;background:white;border:1px solid var(--line);border-radius:4px}
 .table-scroll{overflow:auto}
@@ -75,6 +76,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 Inter,'Source Han
 footer{padding:20px 26px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
 dialog{border:1px solid var(--line);border-radius:6px;padding:26px;max-width:420px;width:calc(100% - 32px);color:var(--ink)}
 dialog::backdrop{background:#0a1b3380}
+#createDialog{max-width:680px;max-height:90dvh;overflow:auto}
 [hidden]{display:none!important}
 @media(max-width:1050px){.workspace{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.detail{max-width:none}}
 @media(max-width:560px){main{padding:18px 14px}.topbar{padding:14px;gap:12px;flex-wrap:wrap}.topbar img{width:120px}.account-actions{width:100%;margin:0;justify-content:flex-end}.account-actions span{margin-right:auto}.filters{gap:12px}.filters .search{grid-column:1/-1}.edit-grid{grid-template-columns:1fr}.wide{grid-column:auto}.auth-view{margin-top:28px;padding:22px}th,td{padding:10px}.detail{padding:18px}}

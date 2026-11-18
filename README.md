@@ -4,7 +4,22 @@
 
 ## 新版網站
 
-目前版本為 1.2.0，版本號記錄在 `VERSION`，建置時會顯示在各頁頁尾。
+目前版本為 1.4.0，版本號記錄在 `VERSION`，建置時會顯示在各頁頁尾。
+
+## Cloudflare 整站
+
+部署目標使用 Cloudflare Workers Static Assets 與 D1。前台、登入頁和 API 同源，Inquiry 可直接收件，登入後台即可管理同一資料庫。
+
+- 網站 https://northgo-website.northgo-website.workers.dev/
+- 詢問 https://northgo-website.northgo-website.workers.dev/zh-tw/inquiry/index.html
+- 後台 https://northgo-website.northgo-website.workers.dev/admin/
+- `wrangler.jsonc` 記錄 Worker、公開網址與 D1 綁定。程式碼中的資料庫 ID 為資源識別碼，存取權由 Cloudflare 授權控管。
+- `node node_modules/wrangler/bin/wrangler.js deploy` 會先執行 Cloudflare 建置再發布。
+- `node node_modules/wrangler/bin/wrangler.js d1 migrations apply northgo-inquiries --remote` 套用後續資料結構更新。
+- 本機資料的初始匯入可用 `node cloudflare/import-local.mjs --remote --include-history`。程式只匯出密碼雜湊，使用忽略追蹤的私有暫存 SQL，完成後刪除該暫存檔。既有 D1 帳號與收件不會被覆蓋，工作階段不會搬移。
+- 正式後台停用公開帳號註冊。使用原本建立的管理帳號登入。密碼雜湊、收件及工作階段只保存在 D1，沒有放入靜態網站或 Git。
+- 雲端 D1 與本機 SQLite 是兩個資料庫，初次搬移後以雲端後台管理公開詢問。日後從本機開啟後台時，資料不會自動與 D1 雙向同步。
+- GitHub Pages 可保留作為前台，Actions Variable 的 `NORTHGO_API_URL` 設為上述 Cloudflare origin 後重新部署即可直接收件。Cloudflare 設定已允許該 GitHub Pages origin 的公開收件請求，後台登入仍限同源。
 
 ## 詢問管理後台
 
@@ -12,11 +27,14 @@
 首次於本機開啟後台會顯示建立帳號表單，請自行設定帳號與至少 12 字元的密碼。
 首次設定僅允許非 production 模式的本機連線，後續開啟即為登入畫面。
 
-- 後台提供搜尋、狀態／服務／據點篩選、分頁、詢問詳情、客戶資料修正、負責人、內部備註、封存與修改紀錄。
+- 後台提供新增、搜尋、狀態／服務／據點篩選、分頁、詢問詳情、客戶資料修正、負責人、內部備註、封存與修改紀錄。
+- 刪除會移至回收筒，從「資料範圍」選擇回收筒可查看及還原。刪除與還原均記錄操作者和時間，原始提交內容保留。
+- 前台與後台共用資料驗證及收件邏輯，後台清單每 15 秒更新。收件編號可用來比對前台與後台的同一筆資料。
+- 後台手動新增會標記資料來源與建立者。重複送出相同編號與內容不會產生兩筆詢問。
 - 待處理、處理中、已回覆及已封存是人工處理狀態。「已回覆」由管理者更新，回覆信件使用既有聯絡流程。
 - 原始詢問保存在 `.northgo-inbox`。資料修正、修改歷程、密碼雜湊與工作階段保存在 `.northgo-private/admin.sqlite`，不在公開網頁目錄內。
 - `NORTHGO_INBOX_DIR` 與 `NORTHGO_DATA_DIR` 可指定持久化資料目錄。部署或升級請保留並備份這兩個目錄，勿存入 Git。
-- 投遞程式使用後台修正過的客戶資料，略過已封存項目。內部備註不會送到客戶端或投遞端。
+- 投遞程式使用後台修正過的客戶資料，略過已封存及回收筒內的項目。內部備註不會送到客戶端或投遞端。
 - 工作階段使用 HttpOnly、SameSite=Strict Cookie，8 小時後到期。後台可變更密碼，變更後所有工作階段失效。
 
 ### 連接 GitHub Pages 的公開詢問
@@ -30,6 +48,22 @@ GitHub Pages 僅部署靜態網站。管理後台與收件 API 需另部署於�
 5. 確認公開詢問送出後取得收件編號，且可登入後端主機的 `/admin/` 看到同一筆資料。
 
 未指定後端網址的 Pages 版本保留郵件草稿流程。後台資料僅能管理由 API 收到的詢問，先前的郵件草稿不會自動匯入。
+
+### CRUD 執行計劃與進度
+
+1. 共用收件資料模型與驗證，前台 POST 建立詢問後回傳編號。已完成。
+2. 後台 GET 查看與搜尋，PATCH 維護資料，DELETE 移至回收筒，POST restore 還原。已完成。
+3. 驗證登入權限、CSRF、重複送出、版本衝突、修改歷程及原始內容保留。以隔離資料通過。
+4. Cloudflare 整站使用同源 Worker API 與 D1。GitHub Pages 前台另透過 NORTHGO_API_URL 連接同一 API。
+5. 已在 Cloudflare 公開 API 驗收建立、後台讀取、修改、刪除、還原、版本衝突與登出，並清除驗收資料。GitHub Pages 已設定同一個公開 API 網址。
+
+### 容器部署
+
+`Dockerfile` 包含 Node.js 24、前台與後台，不包含本機帳密資料庫和收件內容。請掛載持久化磁碟於 `/data`，並將現有私有資料透過主機的私有管理管道移至 `/data/private` 與 `/data/inbox`。容器使用 node 使用者執行，資料目錄須允許該使用者讀寫。
+
+在 HTTPS 反向代理後方啟動服務，設定 NORTHGO_SITE_URL 為後端網址，以及前述的 NORTHGO_FRONTEND_ORIGINS。首次部署保留本機已建立的管理帳號資料庫，正式模式停用公開註冊。帳密與資料庫保持在私有磁碟，勿加入映像檔或 Git。可用 `/api/version` 作為健康檢查路徑。
+
+若使用 Render，持久化磁碟需要付費 Web Service，免費服務的本機檔案會在重啟或重新部署後遺失。參考官方 https://render.com/docs/disks 與 https://render.com/docs/free 。實際部署待確認主機或平台與費用範圍。
 
 - `node build-northgo.mjs` 產生四語系共 60 個 HTML 頁面。編輯 `site-assets/content.js` 與 `site-assets/offices.js` 後重新產生。
 - `node serve-northgo.mjs` 啟動本機網站，預設網址為 `http://127.0.0.1:4180`。可設定 `PORT`。

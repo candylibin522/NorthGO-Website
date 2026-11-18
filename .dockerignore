@@ -1,0 +1,15 @@
+.git
+.github
+.northgo-private
+.northgo-inbox
+.env
+.env.*
+northgo-site
+/new-*.png
+/offices-*.png
+/sitemap-tree-mobile.png
+office-assets/countries.geojson
+tests
+node_modules
+.wrangler
+.dev.vars*

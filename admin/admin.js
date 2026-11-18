@@ -53,6 +53,8 @@ function signedOut() {
   $('#counts').replaceChildren();
   $('#passwordForm').reset();
   $('#passwordDialog').close();
+  $('#createDialog').close();
+  $('#createForm').reset();
 }
 
 async function api(path, options = {}) {
@@ -119,6 +121,7 @@ function filteredEntries() {
   const filter = new FormData($('#filters'));
   const search = String(filter.get('search')).trim().toLowerCase();
   return entries.filter(entry =>
+    (filter.get('deleted') === 'deleted' ? !!entry.deletedAt : !entry.deletedAt) &&
     (!filter.get('state') || entry.state === filter.get('state')) &&
     (!filter.get('service') || String(entry.service) === filter.get('service')) &&
     (!filter.get('recipient') || String(entry.recipient) === filter.get('recipient')) &&
@@ -128,10 +131,12 @@ function filteredEntries() {
 }
 
 function renderList() {
+  const deleted = $('#filters').elements.deleted.value === 'deleted';
+  const scope = entries.filter(entry => deleted ? !!entry.deletedAt : !entry.deletedAt);
   const counts = $('#counts');
   counts.replaceChildren();
   for (const [key, text] of [['all', '全部'], ...Object.entries(states)]) {
-    const count = key === 'all' ? entries.length : entries.filter(entry => entry.state === key).length;
+    const count = key === 'all' ? scope.length : scope.filter(entry => entry.state === key).length;
     const item = element('span', text);
     item.append(element('strong', String(count)));
     counts.append(item);
@@ -158,7 +163,7 @@ function renderList() {
     rows.append(row);
   }
   $('#empty').hidden = filtered.length > 0;
-  $('#empty').textContent = entries.length ? '沒有符合條件的詢問。' : '尚未收到詢問。';
+  $('#empty').textContent = scope.length ? '沒有符合條件的詢問。' : deleted ? '回收筒目前沒有詢問。' : '尚未收到詢問。';
   $('#pageInfo').textContent = filtered.length + ' 筆 · 第 ' + page + ' / ' + totalPages + ' 頁';
   $('#previous').disabled = page <= 1;
   $('#next').disabled = page >= totalPages;
@@ -168,7 +173,7 @@ async function loadList() {
   const sequence = ++loadSequence;
   $('#refresh').disabled = true;
   try {
-    const result = await api('/enquiries');
+    const result = await api('/enquiries?deleted=all');
     if (!authenticated || sequence !== loadSequence) return;
     entries = result.entries;
     renderList();
@@ -231,12 +236,23 @@ function renderDetail() {
   const meta = element('dl');
   for (const [label, value] of [
     ['收件時間', date(original.receivedAt)], ['語系', original.language || '—'],
+    ['資料來源', original.source === 'admin' ? '後台建立 · ' + original.createdBy : '前台詢問'],
     ['投遞狀態', ({ received: '已收件', delivered: '已投遞', delivery_failed: '投遞失敗' })[original.status] || original.status || '—'],
     ['最後維護', management.updatedAt ? date(management.updatedAt) + ' · ' + management.updatedBy : '尚未修改']
   ]) meta.append(element('dt', label), element('dd', value));
   section.append(meta);
+  const lifecycle = element('div', undefined, 'actions');
+  const lifecycleButton = element('button', management.deletedAt ? '還原詢問' : '移至回收筒');
+  lifecycleButton.type = 'button';
+  lifecycleButton.addEventListener('click', () => changeDeletion(!!management.deletedAt));
+  lifecycle.append(lifecycleButton);
+  if (management.deletedAt) {
+    lifecycle.append(element('span', '刪除時間 ' + date(management.deletedAt), 'muted'));
+  }
+  section.append(lifecycle);
   const form = element('form');
   form.id = 'detailForm';
+  form.hidden = !!management.deletedAt;
   const grid = element('div', undefined, 'edit-grid');
   grid.append(
     inputField('state', '處理狀態', management.state, Object.entries(states)),
@@ -311,6 +327,7 @@ function renderDetail() {
     if (entry.before.state !== entry.after.state) changes.push(states[entry.before.state] + ' → ' + states[entry.after.state]);
     if (entry.before.assignee !== entry.after.assignee) changes.push('負責人');
     if (entry.before.notes !== entry.after.notes) changes.push('內部備註');
+    if (entry.before.deletedAt !== entry.after.deletedAt) changes.push(entry.after.deletedAt ? '移至回收筒' : '還原詢問');
     for (const [key, label] of Object.entries(fieldLabels)) {
       if (entry.before.corrections[key] !== entry.after.corrections[key]) changes.push(label);
     }
@@ -320,6 +337,72 @@ function renderDetail() {
   audit.append(items);
   section.append(originalDetails, audit);
 }
+
+async function changeDeletion(restore) {
+  if (saving || !allowDiscard()) return;
+  const text = restore ? '確定還原這筆詢問？' : '確定將這筆詢問移至回收筒？之後可還原。';
+  if (!confirm(text)) return;
+  saving = true;
+  try {
+    current = await api('/enquiries/' + current.record.reference + (restore ? '/restore' : ''), {
+      method: restore ? 'POST' : 'DELETE', body: JSON.stringify({ revision: current.management.revision })
+    });
+    if (!authenticated) return;
+    dirty = false;
+    renderDetail();
+    message('#listMessage', restore ? '詢問已還原。' : '詢問已移至回收筒。', true);
+    await loadList();
+  } catch (error) {
+    message('#listMessage', error.message);
+  } finally {
+    saving = false;
+  }
+}
+
+let createReference;
+$('#createEnquiry').addEventListener('click', () => {
+  if (saving || detailLoading || !allowDiscard()) return;
+  if (dirty) { dirty = false; renderDetail(); }
+  const form = $('#createForm');
+  form.reset();
+  const fields = $('#createFields');
+  fields.replaceChildren();
+  for (const [name, label] of Object.entries(fieldLabels)) {
+    const options = name === 'service' ? services.map((text, i) => [String(i), text])
+      : name === 'recipient' ? offices.map((text, i) => [String(i), text]) : null;
+    fields.append(inputField(name, label, options ? '0' : '', options));
+  }
+  fields.append(inputField('language', '語系', 'zh', [['zh', '繁體中文'], ['en', 'English'], ['ja', '日本語'], ['vi', 'Tiếng Việt']]));
+  createReference = undefined;
+  message('#createMessage', '');
+  $('#createDialog').showModal();
+});
+$('#cancelCreate').addEventListener('click', () => $('#createDialog').close());
+$('#createForm').addEventListener('input', () => { createReference = undefined; });
+$('#createForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (saving) return;
+  createReference ||= Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join('');
+  const form = event.currentTarget;
+  const payload = { ...Object.fromEntries(new FormData(form)), reference: createReference };
+  saving = true;
+  form.querySelectorAll('input,textarea,select,button').forEach(control => { control.disabled = true; });
+  try {
+    const result = await api('/enquiries', { method: 'POST', body: JSON.stringify(payload) });
+    if (!authenticated) return;
+    $('#createDialog').close();
+    $('#filters').reset();
+    page = 1;
+    await loadList();
+    saving = false;
+    await loadDetail(result.reference);
+  } catch (error) {
+    message('#createMessage', error.message);
+  } finally {
+    saving = false;
+    form.querySelectorAll('input,textarea,select,button').forEach(control => { control.disabled = false; });
+  }
+});
 
 $('#authForm').addEventListener('submit', async event => {
   event.preventDefault();
@@ -384,3 +467,6 @@ for (const [field, values] of [['service', services], ['recipient', offices]]) {
   });
 }
 start();
+setInterval(() => {
+  if (authenticated && !document.hidden && !saving && !detailLoading) loadList();
+}, 15000);

@@ -4,3 +4,8 @@
 .env.*
 !.env.example
 northgo-site/
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+cloudflare/.import-*

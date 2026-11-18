@@ -33,13 +33,14 @@
       <button id="retryAuth" type="button" hidden>重新連線</button>
     </section>
     <section id="appView" hidden>
-      <div class="page-heading"><h1>客戶詢問</h1><button id="refresh" type="button" title="重新整理詢問清單">重新整理</button></div>
+      <div class="page-heading"><h1>客戶詢問</h1><div class="actions"><button id="createEnquiry" class="primary" type="button">新增詢問</button><button id="refresh" type="button" title="重新整理詢問清單">重新整理</button></div></div>
       <div id="counts" class="counts" aria-label="詢問狀態統計"></div>
       <form id="filters" class="filters" role="search">
         <label class="search">搜尋<input name="search" type="search" placeholder="姓名、公司、Email 或收件編號"></label>
         <label>處理狀態<select name="state"><option value="">所有狀態</option><option value="new">待處理</option><option value="processing">處理中</option><option value="replied">已回覆</option><option value="archived">已封存</option></select></label>
         <label>服務<select name="service"><option value="">所有服務</option></select></label>
         <label>據點<select name="recipient"><option value="">所有據點</option></select></label>
+        <label>資料範圍<select name="deleted"><option value="active">目前詢問</option><option value="deleted">回收筒</option></select></label>
       </form>
       <p id="listMessage" class="message" role="status"></p>
       <div class="workspace">
@@ -58,6 +59,14 @@
     </section>
   </main>
   <footer>Northgo <span id="version"></span></footer>
+  <dialog id="createDialog">
+    <form id="createForm">
+      <h2>新增客戶詢問</h2>
+      <div id="createFields" class="edit-grid"></div>
+      <p id="createMessage" class="message" role="status"></p>
+      <div class="actions"><button type="submit" class="primary">建立詢問</button><button id="cancelCreate" type="button">取消</button></div>
+    </form>
+  </dialog>
   <dialog id="passwordDialog">
     <form id="passwordForm">
       <h2>變更密碼</h2>

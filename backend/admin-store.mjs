@@ -1,10 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { randomBytes, createHash, scrypt, timingSafeEqual } from 'node:crypto';
-import { promisify } from 'node:util';
+import { randomBytes, createHash } from 'node:crypto';
+export { passwordHash, verifyPassword, passwordIsValid } from './passwords.mjs';
 
-const deriveKey = promisify(scrypt);
 export const enquiryStates = ['new', 'processing', 'replied', 'archived'];
 
 export function openAdminStore(project) {
@@ -31,6 +30,10 @@ export function openAdminStore(project) {
       happened_at TEXT NOT NULL, before_json TEXT NOT NULL, after_json TEXT NOT NULL
     );
   `);
+  const columns = db.prepare('PRAGMA table_info(enquiries)').all();
+  if (!columns.some(column => column.name === 'deleted_at')) {
+    db.exec('ALTER TABLE enquiries ADD COLUMN deleted_at TEXT');
+  }
   return db;
 }
 
@@ -38,19 +41,6 @@ export function administrator(db) {
   return db.prepare('SELECT * FROM administrator WHERE id = 1').get();
 }
 
-export async function passwordHash(password, salt) {
-  return Buffer.from(await deriveKey(password, salt, 64)).toString('hex');
-}
-
-export async function verifyPassword(account, password) {
-  const candidate = await passwordHash(password, account?.salt || 'northgo-unconfigured');
-  const expected = account?.password_hash || '0'.repeat(128);
-  return timingSafeEqual(Buffer.from(candidate, 'hex'), Buffer.from(expected, 'hex')) && !!account;
-}
-
-export function passwordIsValid(password) {
-  return typeof password === 'string' && password.length >= 12 && password.length <= 256;
-}
 
 export function createSession(db) {
   const token = randomBytes(32).toString('hex');
@@ -75,10 +65,11 @@ export function sessionForRequest(db, request) {
 
 export function managementFor(db, reference) {
   const row = db.prepare('SELECT * FROM enquiries WHERE reference = ?').get(reference);
-  if (!row) return { revision: 0, state: 'new', assignee: '', notes: '', corrections: {}, updatedAt: null, updatedBy: null };
+  if (!row) return { revision: 0, state: 'new', assignee: '', notes: '', corrections: {}, updatedAt: null, updatedBy: null, deletedAt: null };
   return {
     revision: row.revision, state: row.state, assignee: row.assignee, notes: row.notes,
-    corrections: JSON.parse(row.corrections), updatedAt: row.updated_at, updatedBy: row.updated_by
+    corrections: JSON.parse(row.corrections), updatedAt: row.updated_at, updatedBy: row.updated_by,
+    deletedAt: row.deleted_at
   };
 }
 
@@ -92,12 +83,14 @@ export function saveManagement(db, reference, input, actor) {
     }
     const updatedAt = new Date().toISOString();
     db.prepare(`
-      INSERT INTO enquiries VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO enquiries(reference, revision, state, assignee, notes, corrections, updated_at, updated_by, deleted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(reference) DO UPDATE SET revision=excluded.revision,
       state=excluded.state, assignee=excluded.assignee, notes=excluded.notes,
-      corrections=excluded.corrections, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+      corrections=excluded.corrections, updated_at=excluded.updated_at, updated_by=excluded.updated_by,
+      deleted_at=excluded.deleted_at
     `).run(reference, previous.revision + 1, input.state, input.assignee, input.notes,
-      JSON.stringify(input.corrections), updatedAt, actor);
+      JSON.stringify(input.corrections), updatedAt, actor, input.deletedAt === undefined ? previous.deletedAt : input.deletedAt);
     const result = managementFor(db, reference);
     db.prepare('INSERT INTO history(reference, actor, happened_at, before_json, after_json) VALUES (?, ?, ?, ?, ?)')
       .run(reference, actor, updatedAt, JSON.stringify(previous), JSON.stringify(result));

@@ -1,0 +1,18 @@
+{
+  "name": "northgo-website",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build-northgo.mjs",
+    "start": "node serve-northgo.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "cf:login": "wrangler login",
+    "cf:deploy": "wrangler deploy",
+    "cf:dev": "wrangler dev",
+    "cf:migrate": "wrangler d1 migrations apply northgo-inquiries --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.164.0"
+  }
+}

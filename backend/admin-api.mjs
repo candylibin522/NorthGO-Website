@@ -1,15 +1,13 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { createEnquiry, enquiryFieldLimits, normalizedEnquiry } from './enquiry-repository.mjs';
 import {
   administrator, createSession, enquiryStates, managementFor, passwordHash,
   passwordIsValid, saveManagement, sessionForRequest, verifyPassword
 } from './admin-store.mjs';
 
-const editableLimits = {
-  name: 100, company: 150, email: 200, origin: 150, destination: 150,
-  dimensions: 150, schedule: 150, requirements: 2000
-};
+const editableLimits = enquiryFieldLimits;
 const attempts = new Map();
 
 export function takeRateLimit(key, maximum, windowMs) {
@@ -167,6 +165,14 @@ export async function adminApi(request, response, url, { db, inbox, json }) {
     cookie(response, '', 0);
     return json(response, 200, { ok: true });
   }
+  if (path === '/enquiries' && request.method === 'POST') {
+    const input = await readBody(request);
+    const fields = normalizedEnquiry(input, { administrator: true });
+    if (!fields) return json(response, 400, { error: '請確認必填資料、Email、服務及據點。' });
+    const saved = await createEnquiry(inbox, fields, account.username);
+    if (!saved) return json(response, 409, { error: '此編號已有其他資料，請重新新增。' });
+    return json(response, saved.created ? 201 : 200, { reference: fields.reference });
+  }
   if (path === '/enquiries' && request.method === 'GET') {
     const names = await readdir(inbox).catch(error => {
       if (error.code === 'ENOENT') return [];
@@ -179,12 +185,15 @@ export async function adminApi(request, response, url, { db, inbox, json }) {
         const original = await readRecord(inbox, name.slice(0, -5));
         if (!original) { unreadable++; continue; }
         const management = managementFor(db, original.reference);
+        const deletedFilter = url.searchParams.get('deleted');
+        if (management.deletedAt && !['all', 'only'].includes(deletedFilter)) continue;
+        if (!management.deletedAt && deletedFilter === 'only') continue;
         const corrected = { ...original, ...management.corrections };
         entries.push({
           reference: original.reference, name: corrected.name, company: corrected.company,
           email: corrected.email, service: corrected.service, recipient: corrected.recipient,
           receivedAt: original.receivedAt, language: original.language,
-          state: management.state, assignee: management.assignee
+          state: management.state, assignee: management.assignee, deletedAt: management.deletedAt
         });
       } catch (error) {
         if (!(error instanceof SyntaxError)) throw error;
@@ -194,11 +203,25 @@ export async function adminApi(request, response, url, { db, inbox, json }) {
     entries.sort((a, b) => String(b.receivedAt).localeCompare(String(a.receivedAt)));
     return json(response, 200, { entries, unreadable });
   }
-  const reference = path.match(/^\/enquiries\/([a-f0-9]{32})$/)?.[1];
-  if (reference && ['GET', 'PATCH'].includes(request.method)) {
+  const match = path.match(/^\/enquiries\/([a-f0-9]{32})(\/restore)?$/);
+  const reference = match?.[1];
+  if (reference && (['GET', 'PATCH', 'DELETE'].includes(request.method) || match[2] && request.method === 'POST')) {
     const original = await readRecord(inbox, reference);
     if (!original) return json(response, 404, { error: '找不到此詢問。' });
-    if (request.method === 'PATCH') {
+    const existing = managementFor(db, reference);
+    const restoring = match[2] && request.method === 'POST';
+    if (match[2] && !restoring) return json(response, 405, { error: '不支援此操作。' });
+    if (restoring || request.method === 'DELETE') {
+      const input = await readBody(request);
+      if (!input || !Number.isInteger(input.revision)) return json(response, 400, { error: '請重新載入此詢問。' });
+      if ((restoring && !existing.deletedAt) || (!restoring && existing.deletedAt))
+        return json(response, 409, { error: '此詢問的刪除狀態已變更，請重新載入。' });
+      const saved = saveManagement(db, reference, {
+        ...existing, revision: input.revision, deletedAt: restoring ? null : new Date().toISOString()
+      }, account.username);
+      if (!saved) return json(response, 409, { error: '其他操作已更新此詢問，請重新載入。' });
+    } else if (request.method === 'PATCH') {
+      if (existing.deletedAt) return json(response, 409, { error: '請先從回收筒還原再修改。' });
       const input = await readBody(request);
       if (!input || !validUpdate(input)) return json(response, 400, { error: '欄位格式不正確，請檢查後重試。' });
       const saved = saveManagement(db, reference, input, account.username);
