@@ -21,8 +21,12 @@ let authenticated = false;
 let role = '';
 let editingUser = null;
 let usersSequence = 0;
+let teamAccounts = [];
+let assignableRoles = [];
+let changingUser = false;
 const roles = {
   owner: ['擁有者', '管理使用者及所有詢問'],
+  admin: ['後台管理員', '管理客戶詢問、詢問管理員及唯讀人員'],
   manager: ['詢問管理員', '查看、新增、修改、刪除及還原詢問'],
   viewer: ['唯讀人員', '查看及搜尋詢問']
 };
@@ -52,6 +56,9 @@ function signedOut() {
   authenticated = false;
   role = '';
   usersSequence++;
+  teamAccounts = [];
+  assignableRoles = [];
+  $('#userFilters').reset();
   $('#usersView').hidden = true;
   $('#userRows').replaceChildren();
   $('#userForm').reset();
@@ -103,7 +110,7 @@ async function start() {
     $('#authTitle').textContent = setup ? '建立管理帳號' : '管理者登入';
     $('#authDescription').textContent = setup
       ? (session.setupAllowed ? '設定第一位管理者的帳號與密碼。密碼至少 12 字元。' : '請在本機伺服器完成初始帳號設定。')
-      : usersPage ? '請使用擁有者帳號登入使用者管理。' : '登入以查看及處理客戶詢問。';
+      : usersPage ? '請使用擁有者或後台管理員帳號登入。' : '登入以查看及處理客戶詢問。';
     $('#confirmLabel').hidden = !setup;
     const form = $('#authForm');
     form.elements.confirm.required = setup;
@@ -124,7 +131,7 @@ async function signedIn(session) {
   authenticated = true;
   role = session.role;
   $('#accountRole').textContent = roles[role]?.[0] || '';
-  $('#usersLink').hidden = role !== 'owner';
+  $('#usersLink').hidden = usersPage || !canManageTeam();
   $('#createEnquiry').hidden = role === 'viewer';
   csrf = session.csrf;
   $('#username').textContent = session.username;
@@ -140,40 +147,103 @@ async function signedIn(session) {
   }
 }
 
+const canManageTeam = () => role === 'owner' || role === 'admin';
+
 async function renderAdminPage() {
-  if (!authenticated || !usersPage) return;
+  if (!authenticated || !usersPage) return false;
   $('#usersView').hidden = false;
-  const permitted = role === 'owner';
-  $('#addUser').hidden = !permitted;
-  $('#usersTable').hidden = true;
-  if (!permitted) {
-    message('#usersMessage', '目前帳號為「' + (roles[role]?.[0] || '一般使用者') + '」。只有擁有者可管理使用者，請登出並使用擁有者帳號登入。');
-    return;
+  if (!canManageTeam()) {
+    $('#addUser').hidden = true;
+    $('#usersTable').hidden = true;
+    message('#usersMessage', '使用者管理限擁有者與後台管理員使用。');
+    return false;
   }
   const sequence = ++usersSequence;
+  const refresh = $('#refreshUsers');
+  refresh.disabled = true;
   message('#usersMessage', '');
   try {
-    const { users: accounts } = await api('/users');
-    if (!authenticated || sequence !== usersSequence) return;
-    const rows = $('#userRows');
-    rows.replaceChildren();
-    for (const user of accounts) {
-      const row = element('tr');
-      const [label, description] = roles[user.role];
-      const action = element('td');
-      if (user.role !== 'owner') {
-        const edit = element('button', '編輯');
-        edit.type = 'button';
-        edit.setAttribute('aria-label', '編輯 ' + user.username);
-        edit.addEventListener('click', () => openUserForm(user));
-        action.append(edit);
-      }
-      row.append(element('td', user.username), element('td', label), element('td', description),
-        element('td', user.enabled ? '啟用' : '停用'), action);
-      rows.append(row);
-    }
+    const { users, availableRoles } = await api('/users');
+    if (!authenticated || sequence !== usersSequence) return false;
+    teamAccounts = users;
+    assignableRoles = availableRoles;
+    renderUserRows();
+    $('#addUser').hidden = false;
     $('#usersTable').hidden = false;
+    return true;
+  } catch (error) {
+    if (sequence === usersSequence) {
+      message('#usersMessage', error.message);
+      $('#addUser').hidden = true;
+      if (error.status === 403) $('#usersTable').hidden = true;
+    }
+    return false;
+  } finally {
+    if (sequence === usersSequence) refresh.disabled = false;
+  }
+}
+
+function renderUserRows() {
+  const filters = $('#userFilters').elements;
+  const search = filters.search.value.trim().toLowerCase();
+  const status = filters.status.value;
+  const visible = teamAccounts.filter(user =>
+    user.username.toLowerCase().includes(search) &&
+    (!filters.role.value || filters.role.value === user.role) &&
+    (status === 'deleted' ? Boolean(user.deleted_at) :
+      !user.deleted_at && (!status || status === (user.enabled ? 'enabled' : 'disabled')))
+  );
+  const rows = visible.map(user => {
+    const row = element('tr');
+    const account = element('td');
+    const person = element('span', undefined, 'team-person');
+    const avatar = element('span', user.username.slice(0, 2).toUpperCase(), 'team-avatar');
+    avatar.setAttribute('aria-hidden', 'true');
+    person.append(avatar, element('span', user.username));
+    account.append(person);
+    const [label, description] = roles[user.role];
+    const permission = element('td', label);
+    permission.append(element('span', description, 'muted'));
+    const state = element('td');
+    state.append(user.deleted_at ? element('span', '已移除', 'state state-archived') :
+      user.enabled ? element('span', '啟用', 'state state-replied') : element('span', '停用', 'state state-archived'));
+    const action = element('td');
+    const actions = element('div', undefined, 'team-row-actions');
+    if (user.canEdit) {
+      if (user.deleted_at) actions.append(userButton('還原', () => changeUserState(user, true)));
+      else actions.append(userButton('編輯', () => openUserForm(user)), userButton('移除', () => changeUserState(user, false), 'team-remove'));
+    } else {
+      actions.append(element('span', '—', 'muted'));
+    }
+    action.append(actions);
+    row.append(account, permission, state, action);
+    return row;
+
+    function userButton(label, run, className) {
+      const button = element('button', label, className);
+      button.type = 'button';
+      button.setAttribute('aria-label', label + ' ' + user.username);
+      button.addEventListener('click', run);
+      return button;
+    }
+  });
+  $('#userRows').replaceChildren(...rows);
+  $('#usersEmpty').hidden = visible.length > 0;
+  $('#usersEmpty').textContent = status === 'deleted' ? '回收筒中沒有符合條件的帳號。' : '沒有符合條件的帳號。';
+  $('#usersCount').textContent = '共 ' + visible.length + ' 個帳號';
+}
+
+async function changeUserState(user, restoring) {
+  if (changingUser) return;
+  if (!restoring && !window.confirm('要將「' + user.username + '」移至回收筒嗎？該帳號會立即登出。')) return;
+  changingUser = true;
+  try {
+    await api('/users/' + user.id + (restoring ? '/restore' : ''), {
+      method: restoring ? 'POST' : 'DELETE', body: JSON.stringify({ revision: user.revision })
+    });
+    if (await renderAdminPage()) message('#usersMessage', restoring ? '已還原帳號。請在停用清單中重新啟用。' : '帳號已移至回收筒。', true);
   } catch (error) { message('#usersMessage', error.message); }
+  finally { changingUser = false; }
 }
 
 function openUserForm(user) {
@@ -182,7 +252,7 @@ function openUserForm(user) {
   editingUser = user || null;
   $('#userDialogTitle').textContent = user ? '編輯使用者' : '新增使用者';
   form.elements.username.value = user?.username || '';
-  form.elements.username.readOnly = !!user;
+  form.elements.role.replaceChildren(...assignableRoles.map(value => new Option(roles[value][0], value)));
   form.elements.role.value = user?.role || 'viewer';
   form.elements.enabled.value = user?.enabled === 0 ? 'false' : 'true';
   $('#userEnabled').hidden = !user;
@@ -194,6 +264,9 @@ function openUserForm(user) {
 }
 
 $('#userDialog').addEventListener('close', () => { $('#userForm').elements.password.value = ''; });
+$('#userFilters').addEventListener('input', renderUserRows);
+$('#userFilters').addEventListener('submit', event => event.preventDefault());
+$('#refreshUsers').addEventListener('click', renderAdminPage);
 $('#addUser').addEventListener('click', () => openUserForm());
 $('#cancelUser').addEventListener('click', () => $('#userDialog').close());
 $('#userForm').elements.role.addEventListener('change', event => {
@@ -203,18 +276,18 @@ $('#userForm').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
   const data = Object.fromEntries(new FormData(form));
+  const user = editingUser;
   const button = form.querySelector('button[type=submit]');
   button.disabled = true;
   try {
-    await api(editingUser ? '/users/' + editingUser.id : '/users', {
-      method: editingUser ? 'PATCH' : 'POST',
+    await api(user ? '/users/' + user.id : '/users', {
+      method: user ? 'PATCH' : 'POST',
       body: JSON.stringify({ username: data.username, role: data.role, enabled: data.enabled === 'true',
-        password: data.password || undefined })
+        password: data.password || undefined, revision: user?.revision })
     });
     form.reset();
     $('#userDialog').close();
-    await renderAdminPage();
-    message('#usersMessage', '已儲存使用者。', true);
+    if (await renderAdminPage()) message('#usersMessage', user ? '已儲存使用者。' : '已新增使用者。', true);
   } catch (error) { message('#userFormMessage', error.message); }
   finally { button.disabled = false; }
 });

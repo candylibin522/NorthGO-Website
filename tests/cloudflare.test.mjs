@@ -39,6 +39,9 @@ test('Cloudflare Worker shares authenticated CRUD with the frontend', async () =
   const db = new DatabaseSync(':memory:');
   db.exec(await readFile(new URL('../cloudflare/migrations/0001_inquiries.sql', import.meta.url), 'utf8'));
   db.exec(await readFile(new URL('../cloudflare/migrations/0002_team_users.sql', import.meta.url), 'utf8'));
+  db.prepare('INSERT INTO team_users VALUES (?,?,?,?,?,?)').run('a'.repeat(32), 'existing-member', 'salt', 'hash', 'viewer', 0);
+  db.exec(await readFile(new URL('../cloudflare/migrations/0003_team_management.sql', import.meta.url), 'utf8'));
+  assert.equal(db.prepare('SELECT enabled FROM team_users WHERE username=?').get('existing-member').enabled, 0);
   const password = 'Cloud-QA-password-129';
   db.prepare('INSERT INTO administrator VALUES (1, ?, ?, ?)').run('qa-admin', 'test-salt', await passwordHash(password, 'test-salt'));
   const env = { DB: d1Adapter(db), ASSETS: { fetch: async () => Response.json({ version: '1.4.0' }) } };
@@ -87,8 +90,8 @@ test('Cloudflare Worker shares authenticated CRUD with the frontend', async () =
     const createdUser = await request('/api/admin/users', 'POST', team);
     assert.equal(createdUser.status, 201);
     const { id } = await createdUser.json();
-    async function signInAsTeam() {
-      const signedIn = await request('/api/admin/login', 'POST', team);
+    async function signInAsTeam(credentials = team) {
+      const signedIn = await request('/api/admin/login', 'POST', credentials);
       assert.equal(signedIn.status, 200);
       return {
         Cookie: signedIn.headers.get('set-cookie').split(';')[0],
@@ -106,6 +109,38 @@ test('Cloudflare Worker shares authenticated CRUD with the frontend', async () =
     assert.equal((await request('/api/admin/users/' + id, 'PATCH', { role: 'manager', enabled: false })).status, 200);
     assert.equal((await request(path, 'GET', undefined, manager)).status, 401);
     assert.equal((await request('/api/admin/login', 'POST', team)).status, 401);
+
+    const usersURL = '/api/admin/users';
+    const memberURL = usersURL + '/' + id;
+    const admin = { username: 'qa-delegate', password: team.password, role: 'admin' };
+    const anotherAdmin = { ...admin, username: 'qa-delegate-two' };
+    const adminResponse = await request(usersURL, 'POST', admin);
+    assert.equal(adminResponse.status, 201);
+    const { id: adminId } = await adminResponse.json();
+    assert.equal((await request(usersURL, 'POST', anotherAdmin)).status, 201);
+    const delegate = await signInAsTeam(admin);
+    const otherDelegate = await signInAsTeam(anotherAdmin);
+    const roster = await (await request(usersURL, 'GET', undefined, delegate)).json();
+    assert.deepEqual(roster.availableRoles, ['manager', 'viewer']);
+    assert.equal(roster.users.find(user => user.id === adminId).canEdit, false);
+    assert.equal((await request(usersURL, 'POST', { ...admin, username: 'qa-third' }, delegate)).status, 403);
+    assert.equal((await request(usersURL + '/' + adminId, 'DELETE', {}, otherDelegate)).status, 403);
+    const member = roster.users.find(user => user.id === id);
+    const edited = { username: 'qa-renamed', role: 'manager', enabled: true, revision: member.revision };
+    assert.equal((await request(memberURL, 'PATCH', edited, delegate)).status, 200);
+    assert.equal((await request(memberURL, 'PATCH', edited, otherDelegate)).status, 409);
+    assert.equal((await request(memberURL, 'PATCH', { ...edited, role: 'admin', revision: member.revision + 1 }, delegate)).status, 403);
+    const renamed = { ...team, username: edited.username };
+    const renamedSession = await signInAsTeam(renamed);
+    assert.equal((await request(memberURL, 'DELETE', { revision: member.revision + 1 }, otherDelegate)).status, 200);
+    assert.equal((await request(path, 'GET', undefined, renamedSession)).status, 401);
+    const trash = await (await request(usersURL, 'GET', undefined, delegate)).json();
+    assert.ok(trash.users.find(user => user.id === id).deleted_at);
+    assert.equal((await request(memberURL + '/restore', 'POST', { revision: member.revision + 2 }, delegate)).status, 200);
+    assert.equal((await request('/api/admin/login', 'POST', renamed)).status, 401);
+    assert.equal((await request(memberURL, 'PATCH', { ...edited, revision: member.revision + 3 }, delegate)).status, 200);
+    const restored = await signInAsTeam(renamed);
+    assert.equal((await request(path, 'GET', undefined, restored)).status, 200);
     assert.equal(cookie, ownerSession.cookie);
     assert.equal((await request('/api/admin/logout', 'POST', {})).status, 200);
     assert.equal((await request(path)).status, 401);

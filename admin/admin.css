@@ -78,6 +78,28 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 Inter,'Source Han
 .history{list-style:none;padding:0;font-size:12px}
 .history li{padding:8px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 footer{padding:20px 26px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+.team-heading{position:relative;isolation:isolate;display:flex;gap:22px;align-items:center;justify-content:space-between;padding:26px 30px;margin-bottom:20px;border-radius:8px;overflow:hidden;background:var(--ink);color:white}
+.team-photo{position:absolute;inset:0 0 0 35%;z-index:-1;background:linear-gradient(90deg,#122347,#12234755),url('/site-assets/team.jpg') center 42%/cover}
+.team-intro h1{margin:6px 0}
+.team-intro p{margin:0;color:#e2eef5}
+.team-intro a{color:#7df1f1;text-underline-offset:3px}
+.team-heading .primary{background:#24d9dc;color:#122347;border-color:#24d9dc;flex-shrink:0}
+.team-directory{border-radius:8px;overflow:hidden}
+.team-filters{display:grid;grid-template-columns:minmax(150px,2fr) repeat(2,minmax(115px,1fr)) auto;gap:12px;align-items:end;padding:16px}
+.team-filters label{margin:0}
+.team-directory th,.team-directory td{vertical-align:middle;padding:12px 16px}
+.team-person{display:flex;align-items:center;gap:10px;font-weight:600}
+.team-avatar{display:grid;place-items:center;flex:0 0 34px;height:34px;border-radius:50%;color:#07545f;background:#d7f5f4;font-weight:700}
+.team-row-actions{display:flex;gap:16px}
+.team-row-actions .team-remove{color:#8a322a}
+.team-count{margin:0;padding:10px 16px;color:var(--muted);font-size:12px}
+@media(max-width:640px){
+  .team-heading{align-items:flex-start;flex-direction:column;padding:18px;gap:14px}
+  .team-photo{inset:0 0 0 15%;opacity:.55}
+  .team-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .team-filters label:first-child{grid-column:1/-1}
+  .team-directory table{min-width:520px}
+}
 dialog{border:1px solid var(--line);border-radius:6px;padding:26px;max-width:420px;width:calc(100% - 32px);color:var(--ink)}
 dialog::backdrop{background:#0a1b3380}
 #createDialog{max-width:680px;max-height:90dvh;overflow:auto}

@@ -143,8 +143,7 @@ export async function adminApi(request, response, url, { db, inbox, json }) {
   if (writes && request.headers['x-csrf-token'] !== session.csrf)
     return json(response, 403, { error: '驗證已失效，請重新登入。' });
   if (path === '/users' || path.startsWith('/users/')) {
-    if (account.role !== 'owner') return json(response, 403, { error: '只有擁有者可管理使用者。' });
-    return teamRequest({ query, batch, method: request.method, path,
+    return teamRequest({ query, batch, actor: account, method: request.method, path,
       read: () => readBody(request), respond: (value, status = 200) => json(response, status, value) });
   }
   if (writes && account.role === 'viewer' && (path === '/enquiries' || path.startsWith('/enquiries/')))
@@ -170,7 +169,7 @@ export async function adminApi(request, response, url, { db, inbox, json }) {
       const updated = account.id === ownerId
         ? db.prepare('UPDATE administrator SET salt=?, password_hash=? WHERE id=1 AND password_hash=?')
           .run(salt, hash, credentials.password_hash)
-        : db.prepare('UPDATE team_users SET salt=?,password_hash=? WHERE id=? AND enabled=1 AND password_hash=?')
+        : db.prepare('UPDATE team_users SET salt=?,password_hash=?,revision=revision+1 WHERE id=? AND enabled=1 AND deleted_at IS NULL AND password_hash=?')
           .run(salt, hash, account.id, credentials.password_hash);
       if (!updated.changes) {
         db.exec('ROLLBACK');

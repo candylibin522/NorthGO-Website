@@ -183,8 +183,8 @@ async function admin(request, env, url) {
       query(env, `INSERT INTO sessions(token_hash,csrf,expires,user_id)
         SELECT ?,?,?,? WHERE ${account.id === ownerId
           ? 'EXISTS (SELECT 1 FROM administrator WHERE password_hash=?)'
-          : 'EXISTS (SELECT 1 FROM team_users WHERE password_hash=? AND id=? AND enabled=1)'}`,
-        hash(token), csrf, expires, account.id, account.password_hash, ...(account.id === ownerId ? [] : [account.id]))
+          : 'EXISTS (SELECT 1 FROM team_users WHERE password_hash=? AND id=? AND enabled=1 AND deleted_at IS NULL AND revision=?)'}`,
+        hash(token), csrf, expires, account.id, account.password_hash, ...(account.id === ownerId ? [] : [account.id, account.revision]))
     ]);
     if (!login[1].meta.changes) return json({ error: '帳號狀態已變更，請重新登入。' }, 401);
     return json({ username: account.username, role: account.role, csrf, expires }, 200, { 'Set-Cookie': sessionCookie(request, token) });
@@ -194,8 +194,7 @@ async function admin(request, env, url) {
   if (!account) return json({ error: '請先登入後台。' }, 401);
   if (writing && request.headers.get('X-CSRF-Token') !== session.csrf) return json({ error: '驗證已失效，請重新登入。' }, 403);
   if (path === '/users' || path.startsWith('/users/')) {
-    if (account.role !== 'owner') return json({ error: '只有擁有者可管理使用者。' }, 403);
-    return teamRequest({ query: sql, batch: list => env.DB.batch(list),
+    return teamRequest({ query: sql, batch: list => env.DB.batch(list), actor: account,
       method: request.method, path, read: () => inputFor(request), respond: json });
   }
   if (writing && account.role === 'viewer' && (path === '/enquiries' || path.startsWith('/enquiries/')))
@@ -216,7 +215,7 @@ async function admin(request, env, url) {
     const result = await env.DB.batch([
       account.id === ownerId
         ? sql('UPDATE administrator SET salt=?,password_hash=? WHERE id=1 AND password_hash=?', salt, password, credentials.password_hash)
-        : sql('UPDATE team_users SET salt=?,password_hash=? WHERE id=? AND enabled=1 AND password_hash=?', salt, password, account.id, credentials.password_hash),
+        : sql('UPDATE team_users SET salt=?,password_hash=?,revision=revision+1 WHERE id=? AND enabled=1 AND deleted_at IS NULL AND password_hash=?', salt, password, account.id, credentials.password_hash),
       sql('DELETE FROM sessions WHERE user_id=? AND changes()=1', account.id)
     ]);
     if (!result[0].meta.changes) return json({ error: '密碼已變更，請重新登入。' }, 409);

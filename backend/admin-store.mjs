@@ -40,6 +40,9 @@ export function openAdminStore(project) {
     if (!db.prepare('PRAGMA table_info(sessions)').all().some(column => column.name === 'user_id')) {
       db.exec(readFileSync(new URL('../cloudflare/migrations/0002_team_users.sql', import.meta.url), 'utf8'));
     }
+    if (!db.prepare('PRAGMA table_info(team_users)').all().some(column => column.name === 'revision')) {
+      db.exec(readFileSync(new URL('../cloudflare/migrations/0003_team_management.sql', import.meta.url), 'utf8'));
+    }
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');

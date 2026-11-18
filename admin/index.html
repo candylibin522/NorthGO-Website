@@ -59,25 +59,40 @@
       </div>
     </section>
     <section id="usersView" hidden aria-label="使用者管理">
-      <div class="page-heading">
-        <div><h1>使用者管理</h1><a href="/admin/">返回客戶詢問</a></div>
-        <button id="addUser" type="button" class="primary">新增使用者</button>
+      <div class="team-heading">
+        <div class="team-photo" aria-hidden="true"></div>
+        <div class="team-intro">
+          <a href="/admin/">← 返回客戶詢問</a>
+          <h1>使用者管理</h1>
+          <p>為每位同事建立獨立帳號，並分配後台權限。</p>
+        </div>
+        <button id="addUser" type="button" class="primary" hidden>新增使用者</button>
       </div>
       <p id="usersMessage" class="message" role="status"></p>
-      <div id="usersTable" class="inbox table-scroll" hidden>
-        <table>
-          <thead><tr><th scope="col">帳號</th><th scope="col">角色</th><th scope="col">詢問權限</th><th scope="col">狀態</th><th scope="col">操作</th></tr></thead>
-          <tbody id="userRows"></tbody>
-        </table>
+      <div id="usersTable" class="inbox team-directory" hidden>
+        <form id="userFilters" class="team-filters" role="search" aria-label="篩選使用者">
+          <label>搜尋帳號<input name="search" type="search" placeholder="輸入帳號名稱"></label>
+          <label>角色<select name="role"><option value="">所有角色</option><option value="owner">擁有者</option><option value="admin">後台管理員</option><option value="manager">詢問管理員</option><option value="viewer">唯讀人員</option></select></label>
+          <label>帳號狀態<select name="status"><option value="">所有狀態</option><option value="enabled">啟用</option><option value="disabled">停用</option><option value="deleted">回收筒</option></select></label>
+          <button id="refreshUsers" type="button">重新整理</button>
+        </form>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="使用者清單">
+          <table>
+            <thead><tr><th scope="col">帳號</th><th scope="col">角色與權限</th><th scope="col">狀態</th><th scope="col">操作</th></tr></thead>
+            <tbody id="userRows"></tbody>
+          </table>
+        </div>
+        <p id="usersEmpty" class="empty" hidden></p>
+        <p id="usersCount" class="team-count" aria-live="polite"></p>
       </div>
     </section>
   </main>
   <footer>Northgo <span id="version"></span></footer>
-  <dialog id="userDialog">
+  <dialog id="userDialog" aria-labelledby="userDialogTitle">
     <form id="userForm">
       <h2 id="userDialogTitle">新增使用者</h2>
       <label>帳號<input name="username" required minlength="3" maxlength="100" pattern="[a-zA-Z0-9_.@\-]{3,100}" autocomplete="off"></label>
-      <label>角色<select name="role"><option value="viewer">唯讀人員</option><option value="manager">詢問管理員</option></select></label>
+      <label>角色<select name="role" required aria-describedby="roleDescription"></select></label>
       <p id="roleDescription" class="muted"></p>
       <label id="userEnabled">帳號狀態<select name="enabled"><option value="true">啟用</option><option value="false">停用</option></select></label>
       <label><span id="teamPasswordLabel">初始密碼</span><input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="256"></label>

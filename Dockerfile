@@ -2,7 +2,7 @@ FROM node:24-alpine
 WORKDIR /app
 COPY --chown=node:node build-northgo.mjs serve-northgo.mjs dispatch-northgo.mjs VERSION northgo-new.html sitemap-data.js ./
 COPY --chown=node:node backend/ ./backend/
-COPY --chown=node:node cloudflare/migrations/0002_team_users.sql ./cloudflare/migrations/0002_team_users.sql
+COPY --chown=node:node cloudflare/migrations/ ./cloudflare/migrations/
 COPY --chown=node:node admin/ ./admin/
 COPY --chown=node:node site-assets/ ./site-assets/
 COPY --chown=node:node office-assets/ ./office-assets/
