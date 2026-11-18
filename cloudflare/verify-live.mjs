@@ -38,7 +38,7 @@ try {
   await writeFile(resolve(temporary, 'public-headers.txt'), 'Origin: ' + origin + '\nContent-Type: application/json\n', { mode: 0o600 });
   await writeFile(resolve(temporary, 'admin-headers.txt'),
     'Origin: ' + origin + '\nContent-Type: application/json\nCookie: northgo_session=' + token + '\nX-CSRF-Token: ' + csrf + '\n', { mode: 0o600 });
-  await execute('INSERT INTO sessions VALUES (' + quote(tokenHash) + ',' + quote(csrf) + ',' + (Date.now() + 600000) + ');');
+  await execute('INSERT INTO sessions(token_hash,csrf,expires) VALUES (' + quote(tokenHash) + ',' + quote(csrf) + ',' + (Date.now() + 600000) + ');');
   assert.equal((await request('/api/admin/enquiries')).status, 401);
   assert.equal((await request('/api/admin/login', 'POST', { username: 'invalid-qa', password: 'invalid-password' })).status, 401);
   const payload = {

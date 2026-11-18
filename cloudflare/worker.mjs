@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { findAccount, sessionAccount, teamRequest, ownerId } from '../backend/team-access.mjs';
 import { verifyPassword, passwordHash, passwordIsValid } from '../backend/passwords.mjs';
 import { enquiryFieldLimits, normalizedEnquiry } from '../backend/enquiry-validation.mjs';
 
@@ -156,12 +157,14 @@ async function admin(request, env, url) {
   const path = url.pathname.slice('/api/admin'.length);
   const writing = !['GET', 'HEAD'].includes(request.method);
   if (writing && !sameOrigin(request)) return json({ error: '請從後台頁面操作。' }, 403);
-  const account = await query(env, 'SELECT * FROM administrator WHERE id=1').first();
+  const sql = (statement, ...args) => query(env, statement, ...args);
   if (path === '/session' && request.method === 'GET') {
     const session = await getSession(env, request);
+    const account = await sessionAccount(sql, session);
+    const owner = await sql('SELECT id FROM administrator WHERE id=1').first();
     return json({
-      authenticated: !!session, setupRequired: !account, setupAllowed: false,
-      username: session ? account.username : null, csrf: session?.csrf || null, expires: session?.expires || null
+      authenticated: !!account, setupRequired: !owner, setupAllowed: false,
+      username: account?.username, role: account?.role, csrf: session?.csrf || null, expires: session?.expires || null
     });
   }
   if (path === '/login' && request.method === 'POST') {
@@ -169,20 +172,34 @@ async function admin(request, env, url) {
     const value = await inputFor(request);
     if (!value || typeof value.password !== 'string' || value.password.length > 256 ||
       typeof value.username !== 'string' || value.username.length > 100) return json({ error: '請填寫帳號與密碼。' }, 400);
-    if (!await verifyPassword(account, value.password) || value.username !== account?.username)
+    const account = await findAccount(sql, value.username);
+    if (!await verifyPassword(account, value.password))
       return json({ error: '帳號或密碼不正確。' }, 401);
     const token = randomBytes(32).toString('hex');
     const csrf = randomBytes(32).toString('hex');
     const expires = Date.now() + 28800000;
-    await env.DB.batch([
+    const login = await env.DB.batch([
       query(env, 'DELETE FROM sessions WHERE expires<=?', Date.now()),
-      query(env, 'INSERT INTO sessions VALUES (?, ?, ?)', hash(token), csrf, expires)
+      query(env, `INSERT INTO sessions(token_hash,csrf,expires,user_id)
+        SELECT ?,?,?,? WHERE ${account.id === ownerId
+          ? 'EXISTS (SELECT 1 FROM administrator WHERE password_hash=?)'
+          : 'EXISTS (SELECT 1 FROM team_users WHERE password_hash=? AND id=? AND enabled=1)'}`,
+        hash(token), csrf, expires, account.id, account.password_hash, ...(account.id === ownerId ? [] : [account.id]))
     ]);
-    return json({ username: account.username, csrf, expires }, 200, { 'Set-Cookie': sessionCookie(request, token) });
+    if (!login[1].meta.changes) return json({ error: '帳號狀態已變更，請重新登入。' }, 401);
+    return json({ username: account.username, role: account.role, csrf, expires }, 200, { 'Set-Cookie': sessionCookie(request, token) });
   }
   const session = await getSession(env, request);
-  if (!session) return json({ error: '請先登入後台。' }, 401);
+  const account = await sessionAccount(sql, session);
+  if (!account) return json({ error: '請先登入後台。' }, 401);
   if (writing && request.headers.get('X-CSRF-Token') !== session.csrf) return json({ error: '驗證已失效，請重新登入。' }, 403);
+  if (path === '/users' || path.startsWith('/users/')) {
+    if (account.role !== 'owner') return json({ error: '只有擁有者可管理使用者。' }, 403);
+    return teamRequest({ query: sql, batch: list => env.DB.batch(list),
+      method: request.method, path, read: () => inputFor(request), respond: json });
+  }
+  if (writing && account.role === 'viewer' && (path === '/enquiries' || path.startsWith('/enquiries/')))
+    return json({ error: '此帳號僅可查看詢問。' }, 403);
   if (path === '/logout' && request.method === 'POST') {
     await query(env, 'DELETE FROM sessions WHERE token_hash=?', session.token_hash).run();
     return json({ ok: true }, 200, { 'Set-Cookie': sessionCookie(request, '', 0) });
@@ -192,12 +209,15 @@ async function admin(request, env, url) {
     const value = await inputFor(request);
     if (!value || !passwordIsValid(value.password) || typeof value.currentPassword !== 'string' ||
       value.currentPassword.length > 256) return json({ error: '新密碼至少 12 字元。' }, 400);
-    if (!await verifyPassword(account, value.currentPassword)) return json({ error: '目前密碼不正確。' }, 401);
+    const credentials = await findAccount(sql, account.username);
+    if (!await verifyPassword(credentials, value.currentPassword)) return json({ error: '目前密碼不正確。' }, 401);
     const salt = randomBytes(16).toString('hex');
     const password = await passwordHash(value.password, salt);
     const result = await env.DB.batch([
-      query(env, 'UPDATE administrator SET salt=?,password_hash=? WHERE id=1 AND password_hash=?', salt, password, account.password_hash),
-      query(env, 'DELETE FROM sessions WHERE changes()=1')
+      account.id === ownerId
+        ? sql('UPDATE administrator SET salt=?,password_hash=? WHERE id=1 AND password_hash=?', salt, password, credentials.password_hash)
+        : sql('UPDATE team_users SET salt=?,password_hash=? WHERE id=? AND enabled=1 AND password_hash=?', salt, password, account.id, credentials.password_hash),
+      sql('DELETE FROM sessions WHERE user_id=? AND changes()=1', account.id)
     ]);
     if (!result[0].meta.changes) return json({ error: '密碼已變更，請重新登入。' }, 409);
     return json({ ok: true }, 200, { 'Set-Cookie': sessionCookie(request, '', 0) });

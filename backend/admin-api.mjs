@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { findAccount, sessionAccount, teamRequest, sqliteTeam, ownerId } from './team-access.mjs';
 import { createEnquiry, enquiryFieldLimits, normalizedEnquiry } from './enquiry-repository.mjs';
 import {
   administrator, createSession, enquiryStates, managementFor, passwordHash,
@@ -91,16 +92,18 @@ function validUpdate(input) {
 
 export async function adminApi(request, response, url, { db, inbox, json }) {
   const path = url.pathname.slice('/api/admin'.length);
-  const account = administrator(db);
+  const owner = administrator(db);
+  const { query, batch } = sqliteTeam(db);
   const writes = !['GET', 'HEAD'].includes(request.method);
   if (writes && !sameOrigin(request)) return json(response, 403, { error: '請從後台頁面操作。' });
   if (path === '/session' && request.method === 'GET') {
     const session = sessionForRequest(db, request);
+    const account = await sessionAccount(query, session);
     return json(response, 200, {
-      authenticated: !!session,
-      setupRequired: !account,
-      setupAllowed: !account && isLocalRequest(request) && process.env.NODE_ENV !== 'production',
-      username: session ? account.username : null,
+      authenticated: !!account,
+      setupRequired: !owner,
+      setupAllowed: !owner && isLocalRequest(request) && process.env.NODE_ENV !== 'production',
+      username: account?.username, role: account?.role,
       csrf: session?.csrf || null,
       expires: session?.expires || null
     });
@@ -113,7 +116,7 @@ export async function adminApi(request, response, url, { db, inbox, json }) {
       body.username.length > 100 || body.password.length > 256)
       return json(response, 400, { error: '請填寫帳號與密碼。' });
     if (path === '/setup') {
-      if (account || !isLocalRequest(request) || process.env.NODE_ENV === 'production')
+      if (owner || !isLocalRequest(request) || process.env.NODE_ENV === 'production')
         return json(response, 403, { error: '初始帳號只能於未設定帳號的本機伺服器建立。' });
       if (!/^[a-zA-Z0-9_.@-]{3,100}$/.test(body.username) || !passwordIsValid(body.password))
         return json(response, 400, { error: '帳號請用 3–100 個英數字元，密碼至少 12 字元。' });
@@ -122,17 +125,30 @@ export async function adminApi(request, response, url, { db, inbox, json }) {
       const created = db.prepare('INSERT OR IGNORE INTO administrator VALUES (1, ?, ?, ?)')
         .run(body.username, salt, hash);
       if (!created.changes) return json(response, 409, { error: '帳號已建立，請登入。' });
-    } else if (!await verifyPassword(account, body.password) || body.username !== account?.username) {
+    }
+    const credentials = await findAccount(query, body.username);
+    if (!await verifyPassword(credentials, body.password)) {
       return json(response, 401, { error: '帳號或密碼不正確。' });
     }
-    const session = createSession(db);
+    const fresh = await findAccount(query, body.username);
+    if (!fresh || fresh.password_hash !== credentials.password_hash)
+      return json(response, 401, { error: '帳號狀態已變更，請重新登入。' });
+    const session = createSession(db, fresh.id);
     cookie(response, session.token, 8 * 60 * 60);
-    return json(response, 200, { username: administrator(db).username, csrf: session.csrf, expires: session.expires });
+    return json(response, 200, { username: fresh.username, role: fresh.role, csrf: session.csrf, expires: session.expires });
   }
   const session = sessionForRequest(db, request);
-  if (!session) return json(response, 401, { error: '請先登入後台。' });
+  const account = await sessionAccount(query, session);
+  if (!account) return json(response, 401, { error: '請先登入後台。' });
   if (writes && request.headers['x-csrf-token'] !== session.csrf)
     return json(response, 403, { error: '驗證已失效，請重新登入。' });
+  if (path === '/users' || path.startsWith('/users/')) {
+    if (account.role !== 'owner') return json(response, 403, { error: '只有擁有者可管理使用者。' });
+    return teamRequest({ query, batch, method: request.method, path,
+      read: () => readBody(request), respond: (value, status = 200) => json(response, status, value) });
+  }
+  if (writes && account.role === 'viewer' && (path === '/enquiries' || path.startsWith('/enquiries/')))
+    return json(response, 403, { error: '此帳號僅可查看詢問。' });
   if (path === '/logout' && request.method === 'POST') {
     db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(session.token_hash);
     cookie(response, '', 0);
@@ -144,19 +160,23 @@ export async function adminApi(request, response, url, { db, inbox, json }) {
     const body = await readBody(request);
     if (!body || typeof body.currentPassword !== 'string' || body.currentPassword.length > 256 ||
       !passwordIsValid(body.password)) return json(response, 400, { error: '新密碼至少 12 字元。' });
-    if (!await verifyPassword(account, body.currentPassword))
+    const credentials = await findAccount(query, account.username);
+    if (!await verifyPassword(credentials, body.currentPassword))
       return json(response, 401, { error: '目前密碼不正確。' });
     const salt = randomBytes(16).toString('hex');
     const hash = await passwordHash(body.password, salt);
     db.exec('BEGIN IMMEDIATE');
     try {
-      const updated = db.prepare('UPDATE administrator SET salt=?, password_hash=? WHERE id=1 AND password_hash=?')
-        .run(salt, hash, account.password_hash);
+      const updated = account.id === ownerId
+        ? db.prepare('UPDATE administrator SET salt=?, password_hash=? WHERE id=1 AND password_hash=?')
+          .run(salt, hash, credentials.password_hash)
+        : db.prepare('UPDATE team_users SET salt=?,password_hash=? WHERE id=? AND enabled=1 AND password_hash=?')
+          .run(salt, hash, account.id, credentials.password_hash);
       if (!updated.changes) {
         db.exec('ROLLBACK');
         return json(response, 409, { error: '密碼已變更，請重新登入。' });
       }
-      db.prepare('DELETE FROM sessions').run();
+      db.prepare('DELETE FROM sessions WHERE user_id=?').run(account.id);
       db.exec('COMMIT');
     } catch (error) {
       db.exec('ROLLBACK');

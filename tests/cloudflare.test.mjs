@@ -38,6 +38,7 @@ function d1Adapter(db) {
 test('Cloudflare Worker shares authenticated CRUD with the frontend', async () => {
   const db = new DatabaseSync(':memory:');
   db.exec(await readFile(new URL('../cloudflare/migrations/0001_inquiries.sql', import.meta.url), 'utf8'));
+  db.exec(await readFile(new URL('../cloudflare/migrations/0002_team_users.sql', import.meta.url), 'utf8'));
   const password = 'Cloud-QA-password-129';
   db.prepare('INSERT INTO administrator VALUES (1, ?, ?, ?)').run('qa-admin', 'test-salt', await passwordHash(password, 'test-salt'));
   const env = { DB: d1Adapter(db), ASSETS: { fetch: async () => Response.json({ version: '1.4.0' }) } };
@@ -81,6 +82,31 @@ test('Cloudflare Worker shares authenticated CRUD with the frontend', async () =
     assert.equal(result.original.name, payload.name);
     assert.equal(result.history.length, 4);
     assert.equal(result.management.revision, 4);
+    const ownerSession = { cookie, csrf };
+    const team = { username: 'qa-reader', password: 'Team-QA-password-321', role: 'viewer' };
+    const createdUser = await request('/api/admin/users', 'POST', team);
+    assert.equal(createdUser.status, 201);
+    const { id } = await createdUser.json();
+    async function signInAsTeam() {
+      const signedIn = await request('/api/admin/login', 'POST', team);
+      assert.equal(signedIn.status, 200);
+      return {
+        Cookie: signedIn.headers.get('set-cookie').split(';')[0],
+        'X-CSRF-Token': (await signedIn.json()).csrf
+      };
+    }
+    const viewer = await signInAsTeam();
+    assert.equal((await request(path, 'GET', undefined, viewer)).status, 200);
+    assert.equal((await request(path, 'PATCH', { ...update, revision: 4 }, viewer)).status, 403);
+    assert.equal((await request('/api/admin/users', 'GET', undefined, viewer)).status, 403);
+    assert.equal((await request('/api/admin/users/' + id, 'PATCH', { role: 'manager', enabled: true })).status, 200);
+    assert.equal((await request(path, 'GET', undefined, viewer)).status, 401);
+    const manager = await signInAsTeam();
+    assert.equal((await request(path, 'PATCH', { ...update, revision: 4 }, manager)).status, 200);
+    assert.equal((await request('/api/admin/users/' + id, 'PATCH', { role: 'manager', enabled: false })).status, 200);
+    assert.equal((await request(path, 'GET', undefined, manager)).status, 401);
+    assert.equal((await request('/api/admin/login', 'POST', team)).status, 401);
+    assert.equal(cookie, ownerSession.cookie);
     assert.equal((await request('/api/admin/logout', 'POST', {})).status, 200);
     assert.equal((await request(path)).status, 401);
   } finally { db.close(); }

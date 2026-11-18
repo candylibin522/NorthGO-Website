@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomBytes, createHash } from 'node:crypto';
 export { passwordHash, verifyPassword, passwordIsValid } from './passwords.mjs';
@@ -34,6 +35,16 @@ export function openAdminStore(project) {
   if (!columns.some(column => column.name === 'deleted_at')) {
     db.exec('ALTER TABLE enquiries ADD COLUMN deleted_at TEXT');
   }
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (!db.prepare('PRAGMA table_info(sessions)').all().some(column => column.name === 'user_id')) {
+      db.exec(readFileSync(new URL('../cloudflare/migrations/0002_team_users.sql', import.meta.url), 'utf8'));
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
   return db;
 }
 
@@ -42,12 +53,12 @@ export function administrator(db) {
 }
 
 
-export function createSession(db) {
+export function createSession(db, userId) {
   const token = randomBytes(32).toString('hex');
   const csrf = randomBytes(32).toString('hex');
   const expires = Date.now() + 8 * 60 * 60 * 1000;
   db.prepare('DELETE FROM sessions WHERE expires <= ?').run(Date.now());
-  db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run(tokenHash(token), csrf, expires);
+  db.prepare('INSERT INTO sessions(token_hash,csrf,expires,user_id) VALUES (?, ?, ?, ?)').run(tokenHash(token), csrf, expires, userId);
   return { token, csrf, expires };
 }
 

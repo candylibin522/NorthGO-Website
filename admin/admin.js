@@ -16,6 +16,14 @@ let dirty = false;
 let detailLoading = false;
 let saving = false;
 let authenticated = false;
+let role = '';
+let editingUser = null;
+let usersSequence = 0;
+const roles = {
+  owner: ['擁有者', '管理使用者及所有詢問'],
+  manager: ['詢問管理員', '查看、新增、修改、刪除及還原詢問'],
+  viewer: ['唯讀人員', '查看及搜尋詢問']
+};
 let loadSequence = 0;
 const pageSize = 20;
 
@@ -40,6 +48,12 @@ function date(value) {
 
 function signedOut() {
   authenticated = false;
+  role = '';
+  usersSequence++;
+  $('#usersView').hidden = true;
+  $('#userRows').replaceChildren();
+  $('#userForm').reset();
+  $('#userDialog').close();
   csrf = '';
   current = null;
   entries = [];
@@ -106,6 +120,9 @@ async function start() {
 
 async function signedIn(session) {
   authenticated = true;
+  role = session.role;
+  $('#usersLink').hidden = role !== 'owner';
+  $('#createEnquiry').hidden = role === 'viewer';
   csrf = session.csrf;
   $('#username').textContent = session.username;
   $('#authForm').reset();
@@ -115,7 +132,83 @@ async function signedIn(session) {
   $('#detail').replaceChildren(element('p', '請選擇一筆詢問。', 'empty'));
   message('#listMessage', '');
   await loadList();
+  await renderAdminPage();
 }
+
+async function renderAdminPage() {
+  if (!authenticated) return;
+  const users = location.hash === '#users' && role === 'owner';
+  $('#appView').hidden = users;
+  $('#usersView').hidden = !users;
+  if (!users) return;
+  const sequence = ++usersSequence;
+  message('#usersMessage', '');
+  try {
+    const { users: accounts } = await api('/users');
+    if (!authenticated || sequence !== usersSequence) return;
+    const rows = $('#userRows');
+    rows.replaceChildren();
+    for (const user of accounts) {
+      const row = element('tr');
+      const [label, description] = roles[user.role];
+      const action = element('td');
+      if (user.role !== 'owner') {
+        const edit = element('button', '編輯');
+        edit.type = 'button';
+        edit.setAttribute('aria-label', '編輯 ' + user.username);
+        edit.addEventListener('click', () => openUserForm(user));
+        action.append(edit);
+      }
+      row.append(element('td', user.username), element('td', label), element('td', description),
+        element('td', user.enabled ? '啟用' : '停用'), action);
+      rows.append(row);
+    }
+  } catch (error) { message('#usersMessage', error.message); }
+}
+
+function openUserForm(user) {
+  const form = $('#userForm');
+  form.reset();
+  editingUser = user || null;
+  $('#userDialogTitle').textContent = user ? '編輯使用者' : '新增使用者';
+  form.elements.username.value = user?.username || '';
+  form.elements.username.readOnly = !!user;
+  form.elements.role.value = user?.role || 'viewer';
+  form.elements.enabled.value = user?.enabled === 0 ? 'false' : 'true';
+  $('#userEnabled').hidden = !user;
+  form.elements.password.required = !user;
+  $('#teamPasswordLabel').textContent = user ? '重設密碼（留空則保留）' : '初始密碼（至少 12 字元）';
+  $('#roleDescription').textContent = roles[form.elements.role.value][1];
+  message('#userFormMessage', '');
+  $('#userDialog').showModal();
+}
+
+window.addEventListener('hashchange', renderAdminPage);
+$('#userDialog').addEventListener('close', () => { $('#userForm').elements.password.value = ''; });
+$('#addUser').addEventListener('click', () => openUserForm());
+$('#cancelUser').addEventListener('click', () => $('#userDialog').close());
+$('#userForm').elements.role.addEventListener('change', event => {
+  $('#roleDescription').textContent = roles[event.target.value][1];
+});
+$('#userForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = Object.fromEntries(new FormData(form));
+  const button = form.querySelector('button[type=submit]');
+  button.disabled = true;
+  try {
+    await api(editingUser ? '/users/' + editingUser.id : '/users', {
+      method: editingUser ? 'PATCH' : 'POST',
+      body: JSON.stringify({ username: data.username, role: data.role, enabled: data.enabled === 'true',
+        password: data.password || undefined })
+    });
+    form.reset();
+    $('#userDialog').close();
+    await renderAdminPage();
+    message('#usersMessage', '已儲存使用者。', true);
+  } catch (error) { message('#userFormMessage', error.message); }
+  finally { button.disabled = false; }
+});
 
 function filteredEntries() {
   const filter = new FormData($('#filters'));
@@ -246,6 +339,7 @@ function renderDetail() {
   lifecycleButton.type = 'button';
   lifecycleButton.addEventListener('click', () => changeDeletion(!!management.deletedAt));
   lifecycle.append(lifecycleButton);
+  lifecycleButton.hidden = role === 'viewer';
   if (management.deletedAt) {
     lifecycle.append(element('span', '刪除時間 ' + date(management.deletedAt), 'muted'));
   }
@@ -264,6 +358,10 @@ function renderDetail() {
     grid.append(inputField(name, label, record[name], options));
   }
   grid.append(inputField('notes', '內部備註', management.notes));
+  if (role === 'viewer') {
+    grid.querySelectorAll('input,textarea').forEach(control => { control.readOnly = true; });
+    grid.querySelectorAll('select').forEach(control => { control.disabled = true; });
+  }
   const status = element('p', '', 'message');
   status.id = 'saveMessage';
   status.setAttribute('role', 'status');
@@ -277,11 +375,13 @@ function renderDetail() {
   reload.type = 'button';
   reload.addEventListener('click', () => loadDetail(record.reference));
   actions.append(save, reload, reply);
+  save.hidden = role === 'viewer';
+  reply.hidden = role === 'viewer';
   form.append(grid, status, actions);
   form.addEventListener('input', () => { dirty = true; message('#saveMessage', '有未儲存的修改。'); });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (saving) return;
+    if (saving || role === 'viewer') return;
     saving = true;
     save.disabled = true;
     reload.disabled = true;

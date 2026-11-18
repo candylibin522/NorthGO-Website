@@ -18,6 +18,7 @@ p{margin:8px 0}
 .topbar img{width:145px;height:auto;display:block}
 .account-actions{margin-left:auto;display:flex;gap:12px;align-items:center}
 .account-actions button{background:transparent;color:#e7fafa;border-color:#64809d}
+.account-actions a{color:#e7fafa}
 main{max-width:1600px;margin:auto;padding:26px}
 .auth-view{max-width:400px;margin:60px auto 100px;padding:28px;background:white;border:1px solid var(--line);border-radius:6px}
 label{display:block;font-weight:500}
