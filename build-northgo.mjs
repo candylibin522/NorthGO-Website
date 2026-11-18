@@ -9,6 +9,16 @@ const legalPaths = ['privacy', 'terms', 'cookies', 'disclaimer'];
 const origin = process.env.NORTHGO_SITE_URL ? new URL(process.env.NORTHGO_SITE_URL).href.replace(/\/+$/, '') : '';
 const version = (await readFile(new URL('VERSION', root), 'utf8')).trim();
 const staticHosting = process.env.NORTHGO_STATIC_HOSTING === '1';
+let apiMeta = '';
+if (process.env.NORTHGO_API_URL) {
+  const backend = new URL(process.env.NORTHGO_API_URL);
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(backend.hostname);
+  if ((backend.protocol !== 'https:' && !(local && backend.protocol === 'http:')) ||
+      backend.username || backend.password || backend.pathname !== '/' || backend.search || backend.hash) {
+    throw new Error('NORTHGO_API_URL must be an HTTPS origin or a local HTTP origin.');
+  }
+  apiMeta = '<meta name="northgo-api-base" content="' + backend.origin + '/">';
+}
 const template = await readFile(new URL('northgo-new.html', root), 'utf8');
 await mkdir(dist, {recursive:true});
 for (const dir of ['site-assets', 'office-assets']) {
@@ -42,7 +52,7 @@ for (const [language, slug] of Object.entries(slugs)) {
     context.location.hash='#/'+route;
     runInContext('render(false, false)',context);
     const html = template
-      .replace('<head>','<head><base href="'+base+'"><meta name="version" content="'+version+'">')
+      .replace('<head>','<head><base href="'+base+'"><meta name="version" content="'+version+'">'+apiMeta)
       .replace(/<html lang="[^"]+"/,'<html lang="'+document.documentElement.lang+'"')
       .replace('<body>','<body data-route="'+route+'" data-locale="'+language+'"'+(staticHosting?' data-static-hosting="true"':'')+'>')
       .replace(/<title>.*?<\/title>/,'<title>'+document.title+'</title>')

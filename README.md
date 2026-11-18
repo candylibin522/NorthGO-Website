@@ -4,7 +4,32 @@
 
 ## 新版網站
 
-目前版本為 1.1.6，版本號記錄在 `VERSION`，建置時會顯示在各頁頁尾。
+目前版本為 1.2.0，版本號記錄在 `VERSION`，建置時會顯示在各頁頁尾。
+
+## 詢問管理後台
+
+使用 Node.js 24 或以上執行 `node serve-northgo.mjs`。開啟終端顯示的 `/admin/` 網址。
+首次於本機開啟後台會顯示建立帳號表單，請自行設定帳號與至少 12 字元的密碼。
+首次設定僅允許非 production 模式的本機連線，後續開啟即為登入畫面。
+
+- 後台提供搜尋、狀態／服務／據點篩選、分頁、詢問詳情、客戶資料修正、負責人、內部備註、封存與修改紀錄。
+- 待處理、處理中、已回覆及已封存是人工處理狀態。「已回覆」由管理者更新，回覆信件使用既有聯絡流程。
+- 原始詢問保存在 `.northgo-inbox`。資料修正、修改歷程、密碼雜湊與工作階段保存在 `.northgo-private/admin.sqlite`，不在公開網頁目錄內。
+- `NORTHGO_INBOX_DIR` 與 `NORTHGO_DATA_DIR` 可指定持久化資料目錄。部署或升級請保留並備份這兩個目錄，勿存入 Git。
+- 投遞程式使用後台修正過的客戶資料，略過已封存項目。內部備註不會送到客戶端或投遞端。
+- 工作階段使用 HttpOnly、SameSite=Strict Cookie，8 小時後到期。後台可變更密碼，變更後所有工作階段失效。
+
+### 連接 GitHub Pages 的公開詢問
+
+GitHub Pages 僅部署靜態網站。管理後台與收件 API 需另部署於支援 Node.js 24 和持久化磁碟的主機。
+
+1. 在本機完成初始帳號設定，再將資料目錄透過私有管道移到後端主機。
+2. 後端設定 `NODE_ENV=production`、`NORTHGO_HOST=0.0.0.0`、`NORTHGO_SITE_URL`、資料目錄和 `NORTHGO_FRONTEND_ORIGINS=https://candylibin522.github.io`。
+3. 後端放在 HTTPS 反向代理後方。production Cookie 僅透過 HTTPS 傳送，初始帳號設定在 production 模式停用。
+4. 在 GitHub 儲存庫的 Actions Variables 設定 `NORTHGO_API_URL` 為後端的 HTTPS origin（例如 `https://api.example.com`），再重新部署 Pages。此值為公開網址。
+5. 確認公開詢問送出後取得收件編號，且可登入後端主機的 `/admin/` 看到同一筆資料。
+
+未指定後端網址的 Pages 版本保留郵件草稿流程。後台資料僅能管理由 API 收到的詢問，先前的郵件草稿不會自動匯入。
 
 - `node build-northgo.mjs` 產生四語系共 60 個 HTML 頁面。編輯 `site-assets/content.js` 與 `site-assets/offices.js` 後重新產生。
 - `node serve-northgo.mjs` 啟動本機網站，預設網址為 `http://127.0.0.1:4180`。可設定 `PORT`。

@@ -2,6 +2,7 @@ import { readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { openAdminStore, managementFor } from './backend/admin-store.mjs';
 
 const project=fileURLToPath(new URL('./',import.meta.url));
 const inbox=resolve(process.env.NORTHGO_INBOX_DIR||resolve(project,'.northgo-inbox'));
@@ -11,15 +12,19 @@ if(!process.env.NORTHGO_ENQUIRY_WEBHOOK||endpoint.protocol!=='https:'||endpoint.
   process.exit(1);
 }
 const token=process.env.NORTHGO_ENQUIRY_TOKEN;
+const adminStore=openAdminStore(project);
 const files=await readdir(inbox).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
 let sent=0,failed=0;
 for(const name of files.filter(name=>/^[a-f0-9]{32}\.json$/.test(name))){
   const file=resolve(inbox,name);
   const record=JSON.parse(await readFile(file,'utf8'));
   if(record.status==='delivered')continue;
+  const management=managementFor(adminStore,record.reference);
+  if(management.state==='archived')continue;
   const headers={'Content-Type':'application/json','Idempotency-Key':record.reference};
   if(token)headers.Authorization='Bearer '+token;
   const {attempts=[],status,...enquiry}=record;
+  Object.assign(enquiry,management.corrections);
   const attempt={at:new Date().toISOString(),result:'network_error'};
   try{
     const response=await fetch(endpoint,{method:'POST',headers,body:JSON.stringify(enquiry),redirect:'error',signal:AbortSignal.timeout(10000)});
@@ -37,4 +42,5 @@ for(const name of files.filter(name=>/^[a-f0-9]{32}\.json$/.test(name))){
   await rename(pending,file);
 }
 console.log('Delivered '+sent+'; pending retry '+failed+'.');
+adminStore.close();
 if(failed)process.exitCode=1;

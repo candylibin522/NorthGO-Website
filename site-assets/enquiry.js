@@ -1,6 +1,7 @@
 function initBuiltContact() {
   const form = document.getElementById('enquiry');
-  const staticHosting = document.body.dataset.staticHosting === 'true';
+  const apiBase = document.querySelector('meta[name="northgo-api-base"]')?.content;
+  const staticHosting = document.body.dataset.staticHosting === 'true' && !apiBase;
   if (staticHosting && document.body.dataset.route !== 'inquiry') {
     form.hidden = true;
     const note = document.createElement('p');
@@ -89,8 +90,9 @@ function initBuiltContact() {
     submit.disabled=true;
     status.textContent='';
     try {
-      const response=await fetch(new URL('api/enquiries',document.baseURI),{
+      const response=await fetch(new URL('api/enquiries',apiBase || document.baseURI),{
         method:'POST',headers:{'Content-Type':'application/json'},
+        credentials:'omit',
         body:JSON.stringify({...Object.fromEntries(new FormData(form)),reference,language:lang,consent:form.querySelector('#consent').checked})
       });
       if(!response.ok) throw new Error('Enquiry rejected');

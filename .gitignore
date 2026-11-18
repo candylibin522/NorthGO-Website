@@ -1,2 +1,6 @@
 .northgo-inbox/
+.northgo-private/
+.env
+.env.*
+!.env.example
 northgo-site/

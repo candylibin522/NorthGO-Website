@@ -5,35 +5,42 @@ import { resolve, sep, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { adminApi, takeRateLimit } from './backend/admin-api.mjs';
+import { openAdminStore } from './backend/admin-store.mjs';
 
 const project=fileURLToPath(new URL('./',import.meta.url));
 const root=resolve(project,'northgo-site');
 const inbox=resolve(process.env.NORTHGO_INBOX_DIR||resolve(project,'.northgo-inbox'));
 const port=Number(process.env.PORT||4180);
-const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.xml':'application/xml','.txt':'text/plain; charset=utf-8'};
+const db=openAdminStore(project);
+const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.woff2':'font/woff2','.otf':'font/otf','.xml':'application/xml','.txt':'text/plain; charset=utf-8'};
 const routes={'/about':'/en/about/','/contact':'/en/contact/','/services/freight-logistics':'/en/freight/','/services/project-logistics':'/en/project/','/services/warehouse-logistics':'/en/warehouse/','/services/shipping-agency':'/en/shipping/','/legal/privacy-policy':'/en/privacy/','/legal/terms':'/en/terms/','/legal/cookie-policy':'/en/cookies/','/legal/disclaimer':'/en/disclaimer/'};
 const limits={name:100,company:150,email:200,origin:150,destination:150,dimensions:150,schedule:150,requirements:2000};
-const build=spawnSync(process.execPath,[resolve(project,'build-northgo.mjs')],{stdio:'inherit',env:{...process.env,NORTHGO_SITE_URL:process.env.NORTHGO_SITE_URL||'http://127.0.0.1:'+port}});
+const build=spawnSync(process.execPath,[resolve(project,'build-northgo.mjs')],{stdio:'inherit',env:{...process.env,NORTHGO_STATIC_HOSTING:'0',NORTHGO_SITE_URL:process.env.NORTHGO_SITE_URL||'http://127.0.0.1:'+port}});
 if(build.status!==0)process.exit(1);
 function json(response,status,value){
   response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
   response.end(JSON.stringify(value));
 }
 async function receive(request,response){
+  if(!takeRateLimit('enquiry:'+request.socket.remoteAddress,30,60*1000))
+    return json(response,429,{error:'Too many enquiries. Please retry later.'});
   if(!/^application\/json(?:;|$)/i.test(request.headers['content-type']||''))return json(response,415,{error:'Expected JSON'});
-  if(request.headers.origin && new URL(request.headers.origin).host!==request.headers.host)return json(response,403,{error:'Invalid origin'});
-  let raw='';
+  const chunks=[];
+  let size=0;
   for await(const chunk of request){
-    raw+=chunk;
-    if(Buffer.byteLength(raw)>16000)return json(response,413,{error:'Request too large'});
+    size+=chunk.length;
+    if(size>16000)return json(response,413,{error:'Request too large'});
+    chunks.push(chunk);
   }
   let input;
-  try{input=JSON.parse(raw);}catch{return json(response,400,{error:'Invalid JSON'});}
+  try{input=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{return json(response,400,{error:'Invalid JSON'});}
   if(!input||typeof input!=='object')return json(response,400,{error:'Invalid input'});
   const data={};
   for(const [key,max] of Object.entries(limits)){
-    if(typeof input[key]!=='string'||input[key].length>max)return json(response,400,{error:'Invalid '+key});
-    data[key]=input[key].trim();
+    const value=input[key]??'';
+    if(typeof value!=='string'||value.length>max)return json(response,400,{error:'Invalid '+key});
+    data[key]=value.trim();
   }
   if(!data.name||!data.company||!data.requirements||!/^\S+@[^\s@]+\.[^\s@]+$/.test(data.email)||
     !/^[0-3]$/.test(input.service)||!/^[0-6]$/.test(input.recipient)||!['zh','en','ja','vi'].includes(input.language)||
@@ -55,11 +62,52 @@ async function receive(request,response){
   }
   json(response,201,{reference:input.reference});
 }
-createServer(async(request,response)=>{
+function enquiryOrigin(request,response){
+  const origin=request.headers.origin;
+  if(!origin)return true;
+  const allowed=(process.env.NORTHGO_FRONTEND_ORIGINS||'').split(',').map(value=>value.trim()).filter(Boolean);
+  try{
+    if(new URL(origin).host===request.headers.host)return true;
+    if(!allowed.includes(origin))return false;
+    response.setHeader('Access-Control-Allow-Origin',origin);
+    response.setHeader('Vary','Origin');
+    response.setHeader('Access-Control-Allow-Methods','POST, OPTIONS');
+    response.setHeader('Access-Control-Allow-Headers','Content-Type');
+    return true;
+  }catch{return false;}
+}
+const server=createServer(async(request,response)=>{
+  response.setHeader('X-Content-Type-Options','nosniff');
+  response.setHeader('X-Frame-Options','DENY');
+  response.setHeader('Referrer-Policy','same-origin');
   try{
     const url=new URL(request.url,'http://localhost');
-    if(url.pathname==='/api/enquiries'&&request.method==='POST')return await receive(request,response);
+    if(url.pathname==='/api/enquiries'){
+      if(!enquiryOrigin(request,response))return json(response,403,{error:'Invalid origin'});
+      if(request.method==='OPTIONS'){response.writeHead(204);return response.end();}
+      if(request.method==='POST')return await receive(request,response);
+    }
+    if(url.pathname==='/api/admin'||url.pathname.startsWith('/api/admin/')){
+      response.setHeader('Cache-Control','no-store');
+      return await adminApi(request,response,url,{db,inbox,json});
+    }
+    if(url.pathname==='/api/version'&&request.method==='GET'){
+      return json(response,200,{version:(await readFile(resolve(project,'VERSION'),'utf8')).trim()});
+    }
     if(!['GET','HEAD'].includes(request.method))return json(response,405,{error:'Method not allowed'});
+    const adminFiles={
+      '/admin':'index.html','/admin/':'index.html','/admin/index.html':'index.html',
+      '/admin/admin.css':'admin.css','/admin/admin.js':'admin.js'
+    };
+    if(Object.hasOwn(adminFiles,url.pathname)){
+      const file=resolve(project,'admin',adminFiles[url.pathname]);
+      response.setHeader('Cache-Control','no-store');
+      response.setHeader('X-Robots-Tag','noindex, nofollow');
+      response.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+      response.writeHead(200,{'Content-Type':types[extname(file)]});
+      if(request.method==='HEAD')return response.end();
+      return createReadStream(file).pipe(response);
+    }
     const locale=url.pathname.match(/^\/(zh-tw|en|ja|vi)(?=\/|$)/)?.[1];
     const oldPath=(locale?url.pathname.slice(locale.length+1):url.pathname).replace(/\/$/,'');
     if(routes[oldPath]){
@@ -77,4 +125,9 @@ createServer(async(request,response)=>{
     else response.end();
     if(error.code!=='ENOENT')console.error(error.code||error.name);
   }
-}).listen(port,'127.0.0.1',()=>console.log('Northgo: http://127.0.0.1:'+port));
+});
+server.listen(port,process.env.NORTHGO_HOST||'127.0.0.1',()=>{
+  const actualPort=server.address().port;
+  console.log('Northgo: http://127.0.0.1:'+actualPort);
+  console.log('Admin: http://127.0.0.1:'+actualPort+'/admin/');
+});
