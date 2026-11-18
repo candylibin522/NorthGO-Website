@@ -121,6 +121,7 @@ async function start() {
 async function signedIn(session) {
   authenticated = true;
   role = session.role;
+  $('#accountRole').textContent = roles[role]?.[0] || '';
   $('#usersLink').hidden = role !== 'owner';
   $('#createEnquiry').hidden = role === 'viewer';
   csrf = session.csrf;
